@@ -14,16 +14,33 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from wsgiref.simple_server import make_server
+
+from . import sleeper
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 
 # ui/ sits beside the package, not inside it, so it stays obviously static.
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
 
-REASONS = {200: "OK", 404: "Not Found", 405: "Method Not Allowed"}
+REASONS = {
+    200: "OK",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    503: "Service Unavailable",
+}
+
+
+class Unavailable(Exception):
+    """Upstream is unreachable. The dispatcher turns this into a 503.
+
+    Worth a real status code rather than a 200 carrying an error key: "Sleeper
+    is down" and "Sleeper says you have no players" are different answers and
+    the UI has to tell them apart.
+    """
 
 
 def health() -> dict[str, str]:
@@ -31,9 +48,25 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def players_summary() -> dict[str, object]:
+    """Counts from Sleeper's player file, plus how stale the cache is."""
+    # Broad on purpose: a timeout, a DNS failure and malformed JSON are all
+    # "Sleeper didn't give us players", and the caller treats them identically.
+    try:
+        players, fetched_at = sleeper.load_players()
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+    summary = sleeper.summarize_players(players)
+    summary["fetched_at"] = fetched_at
+    summary["age_seconds"] = round(time.time() - fetched_at)
+    return summary
+
+
 # path -> handler returning a JSON-serializable payload.
 ROUTES: dict[str, Callable[[], object]] = {
     "/health": health,
+    "/players/summary": players_summary,
 }
 
 
@@ -47,7 +80,12 @@ def application(environ: dict, start_response: Callable) -> Iterable[bytes]:
 
     handler = ROUTES.get(path.rstrip("/") or "/")
     if handler is not None:
-        return _respond(start_response, 200, handler())
+        try:
+            return _respond(start_response, 200, handler())
+        except Unavailable as exc:
+            return _respond(
+                start_response, 503, {"error": "upstream_unavailable", "detail": str(exc)}
+            )
 
     if path in {"", "/"}:
         return _serve_static(start_response, "index.html")

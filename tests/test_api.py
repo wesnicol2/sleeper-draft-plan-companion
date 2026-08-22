@@ -73,3 +73,36 @@ def test_health_still_wins_over_static():
     code, payload = call("/health")
     assert code == 200
     assert payload == {"status": "ok"}
+
+
+def test_players_summary_reports_counts(monkeypatch):
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(
+        sleeper,
+        "load_players",
+        lambda **_: ({"1": {"position": "RB", "active": True}}, 1_000_000.0),
+    )
+
+    code, payload = call("/players/summary")
+
+    assert code == 200
+    assert payload["by_position"]["RB"] == 1
+    assert payload["fetched_at"] == 1_000_000.0
+    assert payload["age_seconds"] > 0
+
+
+def test_players_summary_is_503_when_sleeper_is_unreachable(monkeypatch):
+    """A dead upstream must not look like an empty player pool."""
+    from sleeper_draft_plan_companion import sleeper
+
+    def boom(**_):
+        raise OSError("connection refused")
+
+    monkeypatch.setattr(sleeper, "load_players", boom)
+
+    code, payload = call("/players/summary")
+
+    assert code == 503
+    assert payload["error"] == "upstream_unavailable"
+    assert "connection refused" in payload["detail"]
