@@ -39,11 +39,17 @@ keeping across restarts.
 
 ### Configuration
 
-| Variable    | Required | Default | Purpose                          |
-| ----------- | -------- | ------- | -------------------------------- |
-| `PROD_PORT` | no       | `8082`  | Host port for the production container |
-| `TEST_PORT` | no       | `8083`  | Host port for the test container       |
-| `TZ`        | no       | UTC     | Container timezone               |
+| Variable               | Required | Default     | Purpose                                        |
+| ---------------------- | -------- | ----------- | ---------------------------------------------- |
+| `PROD_PORT`            | no       | `8082`      | Host port for the production container          |
+| `TEST_PORT`            | no       | `8083`      | Host port for the test container                |
+| `TZ`                   | no       | UTC         | Container timezone                              |
+| `DATA_DIR`             | no       | `/srv/data` | Where the Sleeper cache is written              |
+| `PLAYERS_TTL_SECONDS`  | no       | `86400`     | How long the cached player file stays usable    |
+| `HTTP_TIMEOUT_SECONDS` | no       | `30`        | Timeout for a single Sleeper request            |
+| `SLEEPER_USERNAME`     | no       | —           | Draft identity; unused until the draft endpoints land |
+| `SLEEPER_LEAGUE_ID`    | no       | —           | Draft identity                                  |
+| `SLEEPER_DRAFT_ID`     | no       | —           | Draft identity                                  |
 
 ## Run from source
 
@@ -67,6 +73,9 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/` — the UI.
 - `/ui/*` — static assets (HTML, CSS, JS), served straight off disk.
 - `/health` — returns `{"status": "ok"}`.
+- `/players/summary` — counts from Sleeper's player file, plus how stale the
+  cache is. `503` if Sleeper is unreachable, which is deliberately distinct from
+  a successful response reporting zero players.
 
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
@@ -76,6 +85,7 @@ to the static handler.
 
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
+  `config.py` reads runtime settings; `sleeper.py` is the upstream client.
 - `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
 - `tests/` — unit tests.
 - `docs/` — long-form specs, including the draft-companion planning docs.
