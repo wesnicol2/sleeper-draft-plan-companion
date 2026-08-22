@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draft Plan Companion</title>
+  <link rel="stylesheet" href="/ui/styles.css">
+</head>
+<body>
+  <header>
+    <h1>Draft Plan Companion</h1>
+    <p class="tagline">Second-screen companion for a live Sleeper draft.</p>
+  </header>
+
+  <main>
+    <!-- Placeholder until the draft board lands. Everything below is driven by
+         the poll in script.js so the page never needs interaction. -->
+    <section id="status" class="card">
+      <h2>Service</h2>
+      <p>Status: <span id="health" class="pill pill-unknown">checking…</span></p>
+      <p class="muted">Last checked: <span id="checked">never</span></p>
+    </section>
+
+    <section class="card">
+      <h2>Next up</h2>
+      <p class="muted">
+        The draft board is not built yet. Coming next: Sleeper player data, then
+        live draft state, then the plan-aware grid.
+      </p>
+    </section>
+  </main>
+
+  <script src="/ui/script.js"></script>
+</body>
+</html>
