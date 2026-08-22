@@ -47,9 +47,10 @@ keeping across restarts.
 | `DATA_DIR`             | no       | `/srv/data` | Where the Sleeper cache is written              |
 | `PLAYERS_TTL_SECONDS`  | no       | `86400`     | How long the cached player file stays usable    |
 | `HTTP_TIMEOUT_SECONDS` | no       | `30`        | Timeout for a single Sleeper request            |
-| `SLEEPER_USERNAME`     | no       | —           | Draft identity; unused until the draft endpoints land |
-| `SLEEPER_LEAGUE_ID`    | no       | —           | Draft identity                                  |
-| `SLEEPER_DRAFT_ID`     | no       | —           | Draft identity                                  |
+| `SLEEPER_USERNAME`     | no       | —           | Your Sleeper username; used to find your draft slot |
+| `SLEEPER_DRAFT_ID`     | no       | —           | Which draft to follow. `/draft-state` is inert without it |
+| `SLEEPER_LEAGUE_ID`    | no       | —           | Reserved; not read yet                          |
+| `SLEEPER_DRAFT_SLOT`   | no       | —           | Force your slot, for mock drafts that publish no draft order until they start |
 
 ## Run from source
 
@@ -76,6 +77,9 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/players/summary` — counts from Sleeper's player file, plus how stale the
   cache is. `503` if Sleeper is unreachable, which is deliberately distinct from
   a successful response reporting zero players.
+- `/draft-state` — live draft: picks made, who is on the clock, how many picks
+  until your turn, and your roster grouped by position. Returns
+  `{"configured": false}` when `SLEEPER_DRAFT_ID` is unset.
 
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
@@ -85,7 +89,8 @@ to the static handler.
 
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
-  `config.py` reads runtime settings; `sleeper.py` is the upstream client.
+  `config.py` reads runtime settings; `sleeper.py` is the upstream client;
+  `draft.py` turns raw picks into draft state.
 - `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
 - `tests/` — unit tests.
 - `docs/` — long-form specs, including the draft-companion planning docs.
