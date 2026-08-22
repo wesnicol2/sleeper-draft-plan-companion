@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "python-service-template"
+name = "sleeper-draft-plan-companion"
 version = "0.1.0"
 description = "A containerized Python service"
 requires-python = ">=3.11"
@@ -18,7 +18,7 @@ dev = [
 
 [tool.setuptools]
 # Flat layout: be explicit, or setuptools auto-discovery trips over tests/.
-packages = ["app"]
+packages = ["sleeper_draft_plan_companion"]
 
 [tool.ruff]
 target-version = "py311"

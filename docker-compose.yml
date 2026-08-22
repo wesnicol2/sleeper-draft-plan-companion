@@ -1,7 +1,7 @@
 services:
   # Production. Tracks :latest, which CI publishes on every merge to main.
-  app:
-    image: ghcr.io/wesnicol2/python-service-template:latest
+  sleeper-draft-plan-companion:
+    image: ghcr.io/wesnicol2/sleeper-draft-plan-companion:latest
     env_file:
       # Optional: the defaults below work with no .env at all, so a fresh
       # clone comes up without a setup step. Copy .env.example when you need
@@ -20,8 +20,8 @@ services:
   # test traffic write into it would corrupt it. The cost of separating
   # them is that each environment spends its own upstream API quota, which
   # is the right trade but worth knowing before exercising Test hard.
-  app-test:
-    image: ghcr.io/wesnicol2/python-service-template:test
+  sleeper-draft-plan-companion-test:
+    image: ghcr.io/wesnicol2/sleeper-draft-plan-companion:test
     env_file:
       # Optional: the defaults below work with no .env at all, so a fresh
       # clone comes up without a setup step. Copy .env.example when you need

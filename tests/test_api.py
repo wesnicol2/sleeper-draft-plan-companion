@@ -2,7 +2,7 @@
 
 import json
 
-from app.api import application
+from sleeper_draft_plan_companion.api import application
 
 
 def call(path: str, method: str = "GET") -> tuple[int, dict]:

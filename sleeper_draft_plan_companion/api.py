@@ -7,7 +7,7 @@ with your own; `/health` is worth keeping so the container has a liveness probe.
 
 Run it directly:
 
-    python -m app.api --host 0.0.0.0 --port 8000
+    python -m sleeper_draft_plan_companion.api --host 0.0.0.0 --port 8000
 """
 
 from __future__ import annotations

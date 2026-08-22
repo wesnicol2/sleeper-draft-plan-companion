@@ -1,4 +1,4 @@
-# python-service-template
+# sleeper-draft-plan-companion
 
 A containerized Python service. Describe what it does here — one or two
 sentences, from the outside in.
@@ -13,10 +13,10 @@ CI publishes the image to GHCR, so there's nothing to build:
 
 ```bash
 docker run -d \
-  --name python-service-template \
+  --name sleeper-draft-plan-companion \
   -p 8080:8000 \
-  -v /mnt/user/appdata/python-service-template/data:/srv/data \
-  ghcr.io/wesnicol2/python-service-template:latest
+  -v /mnt/user/appdata/sleeper-draft-plan-companion/data:/srv/data \
+  ghcr.io/wesnicol2/sleeper-draft-plan-companion:latest
 ```
 
 Then open `http://<host>:8080/health`. Or use the compose file, which mounts
@@ -47,7 +47,7 @@ keeping across restarts.
 
 ```bash
 pip install -r requirements.txt
-python -m app.api --host 0.0.0.0 --port 8000
+python -m sleeper_draft_plan_companion.api --host 0.0.0.0 --port 8000
 ```
 
 ## Test it
@@ -63,11 +63,11 @@ CI runs exactly these on every push, and a red check blocks the merge.
 ## Endpoints
 
 `/health` — returns `{"status": "ok"}`. Everything else is yours to add; see
-`ROUTES` in `app/api.py`.
+`ROUTES` in `sleeper_draft_plan_companion/api.py`.
 
 ## Project structure
 
-- `app/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
+- `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
 - `tests/` — unit tests.
 - `docs/` — long-form docs and the new-repo checklist.

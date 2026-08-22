@@ -14,4 +14,4 @@ RUN mkdir -p data
 
 EXPOSE 8000
 
-CMD ["python", "-m", "app.api", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "sleeper_draft_plan_companion.api", "--host", "0.0.0.0", "--port", "8000"]
