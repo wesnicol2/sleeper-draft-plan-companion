@@ -37,13 +37,55 @@ expensive to notice.
 
 ## The core idea
 
-<!-- What this project is for, in a paragraph. The thing you would say out loud
-     to explain why it exists. Replace this comment. -->
+A fantasy draft gives you roughly ninety seconds to answer a question with a lot
+of moving parts: given what I have already drafted, what my plan says I still
+need, and who is actually left on the board, who should I take? Doing that by
+scrolling a rankings list under a clock is how people end up with four running
+backs and no tight end.
+
+This app answers it continuously on a second screen. It knows the draft plan
+(config, never hardcoded), it watches the live draft through the Sleeper API,
+and it renders a grid of the best available players per position — reordered so
+the position you most need is furthest left. It takes no input during the draft.
+Any interaction it requires is a design failure, because attention during a pick
+is the scarce resource the whole thing exists to protect.
+
+The specs it is built against live in
+[`docs/draft-companion-planning/`](docs/draft-companion-planning/):
+`draft-companion-plans.txt` (scope and MVP), `draft-plan.txt` (the draft strategy
+itself), `draft-companion-ui-description.txt` (the grid layout), and the drawio
+mockups under `UI Mockups/`.
 
 ## Architecture decisions
 
-<!-- One subsection per decision that a reader would otherwise second-guess.
-     Say what the alternative was and why it lost. -->
+### The draft plan is configuration, not code
+
+`draft-plan.txt` describes checkpoints — round ranges with per-position minimums
+("by end of R6: RB >= 2, WR >= 2"). Those live in a config file the user edits,
+not in Python. The plan changes between seasons and between leagues, and every
+year it is baked into a branch is a year the app is wrong until someone opens an
+editor.
+
+### Sleeper `search_rank`, not ADP
+
+The UI spec says to rank undrafted players by "Sleeper ADP". Sleeper's public API
+does not expose ADP. `/v1/players/nfl` carries `search_rank`, which is Sleeper's
+own ordering and the closest available proxy, so that is what ranking uses.
+Ranking is kept pluggable because the spec lists configurable ranking as a
+stretch goal.
+
+### Bye weeks need a source that isn't Sleeper
+
+Bye-week collision highlighting is in the spec, but there is no bye-week field
+anywhere in the 50 keys `/v1/players/nfl` returns. It needs a season team -> bye
+map in config, or a second upstream. Worth knowing before that feature is
+started rather than halfway through it.
+
+### The player payload is big and must be cached
+
+`/v1/players/nfl` is ~14.6 MB covering ~12,200 players. Sleeper's own guidance is
+to fetch it at most once a day. It is cached to the mounted data volume and
+refreshed daily; the live draft endpoints, which are small, are polled often.
 
 ## Deployment shape
 
@@ -75,10 +117,29 @@ pull credential; it needed one anyway.
 ## Things deliberately not done
 
 - **No mypy, no ESLint.** Ruff only. See `CONTRIBUTING.md`.
-- **No web framework in the starting skeleton.** `app/api.py` is a stdlib WSGI
-  app so the template ships with zero runtime dependencies and the Docker layer
-  cache stays trivial. Add one the moment you actually need routing, validation
-  or async — this is a starting point, not a position.
+- **No web framework.** `sleeper_draft_plan_companion/api.py` is a stdlib WSGI
+  app, so there are zero runtime dependencies and the Docker layer cache stays
+  trivial. This is a starting point, not a position — add one the moment routing
+  or validation actually hurts.
+- **No frontend build step.** The UI is plain HTML, CSS and vanilla JS polling a
+  JSON endpoint. No npm, no bundler. It is one grid on one page; a toolchain
+  would cost more than it returns.
+- **No user interaction during the draft.** No filters, no search, no settings
+  panel. Everything the app shows is derived from the plan and the live draft
+  state. See "the core idea".
 
-<!-- Add your own. This section is most useful when it records the obvious
-     thing you chose not to build, and why. -->
+## Open setup items
+
+Carried over from the new-repo checklist, which has otherwise been completed and
+deleted:
+
+- **`main` is not branch-protected.** Checklist step 5 (require a PR, require one
+  approving review). Deliberately left to the repo owner rather than enabled by
+  an assistant, since it governs review of that assistant's own work.
+- **Actions default workflow permissions are read-only.** The checklist says to
+  set them read/write. Publishing works anyway because `ci.yml` and `publish.yml`
+  request `packages: write` at job level, which is honoured regardless of the
+  default. Verified: the `publish` job succeeds and `:latest` is on GHCR.
+- **Host ports are 8082 (Production) and 8083 (Test).** The template's 8080/8081
+  defaults both collide on the target server, with gluetun and MeTube.
+- The GHCR package is **public**, so the server pulls it without a credential.
