@@ -5,16 +5,23 @@ import json
 from sleeper_draft_plan_companion.api import application
 
 
-def call(path: str, method: str = "GET") -> tuple[int, dict]:
+def call_raw(path: str, method: str = "GET") -> tuple[int, dict[str, str], bytes]:
     """Drive the WSGI app directly -- no server, no socket."""
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
     def start_response(status: str, headers: list[tuple[str, str]]) -> None:
         captured["status"] = status
         captured["headers"] = headers
 
     body = b"".join(application({"PATH_INFO": path, "REQUEST_METHOD": method}, start_response))
-    code = int(captured["status"].split(" ", 1)[0])
+    code = int(str(captured["status"]).split(" ", 1)[0])
+    headers = {k.lower(): v for k, v in captured["headers"]}
+    return code, headers, body
+
+
+def call(path: str, method: str = "GET") -> tuple[int, dict]:
+    """As call_raw, but for the JSON endpoints."""
+    code, _headers, body = call_raw(path, method)
     return code, json.loads(body)
 
 
@@ -33,3 +40,36 @@ def test_unknown_path_is_404():
 def test_write_methods_are_rejected():
     code, _ = call("/health", method="POST")
     assert code == 405
+
+
+def test_root_serves_the_ui():
+    code, headers, body = call_raw("/")
+    assert code == 200
+    assert headers["content-type"].startswith("text/html")
+    assert b"Draft Plan Companion" in body
+
+
+def test_static_assets_are_served_with_their_own_content_type():
+    for path, expected in (("/ui/styles.css", "text/css"), ("/ui/script.js", "javascript")):
+        code, headers, _body = call_raw(path)
+        assert code == 200, path
+        assert expected in headers["content-type"], (path, headers["content-type"])
+
+
+def test_missing_static_file_is_404():
+    code, payload = call("/ui/does-not-exist.css")
+    assert code == 404
+    assert payload["error"] == "not found"
+
+
+def test_traversal_outside_the_ui_directory_is_refused():
+    """`/ui/../pyproject.toml` resolves to a real file -- the containment check,
+    not the existence check, is what has to reject it."""
+    code, _payload = call("/ui/../pyproject.toml")
+    assert code == 404
+
+
+def test_health_still_wins_over_static():
+    code, payload = call("/health")
+    assert code == 200
+    assert payload == {"status": "ok"}
