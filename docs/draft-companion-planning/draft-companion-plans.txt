@@ -1,0 +1,43 @@
+- Draft companion
+    - Will keep up with draft and suggest players at each point based on draft plan (draft plan should be configured in config files only)
+    - Auto update with top suggestions for each round depending on team construction + my preferences
+    
+            
+
+Minimum viable product: A auto updating UI (no interaction needed from user) which shows top picks based on draft plan. Players should be highlighted with different colors based on how many draft plan criteria they have
+
+NEXT STEPS: 
+- Simplify my choices by highlighting the following:
+    - synergy with existing team
+    - offensive team rank (expected points to be scored)
+    - strong handcuffs, 
+    - bye week protection (negatively highlight players who have matching bye weeks to your existing players at that same position)
+    - players with new, better coaches, 
+    - players with new, better teammates, 
+    - starter injury possibility, 
+    etc...
+
+- Explicitly identify dropoffs/deadzones for each position - for WR it's after Jaylen Cocher
+
+
+STRETCH GOALS: 
+    - Show season long curve comparison between top 5 players or so based on season long props from odds api (stretch goal)
+    - calculate predicted Wins Above Replacement (WAR) for every player and rank based on that
+
+
+
+INITIAL DESIGN:
+User Experience: 
+- This app is running on a second screen during the draft.
+- Before the first pick - the app displays the top 12 choices for the players first pick (12 because that is the number of teams in the draft)
+
+- Before the second pick - displays top 12 choices for players 2nd pick based on draft plan needs
+etc... 
+
+
+
+DRAFT PLAN CAN BE FOUND AT docs/draft-companion-planning/draft-plan.txt
+
+
+INTERFACES: 
+Sleeper API - get all players drafted and remaining to be drafted (plus pictures and teams and everything which would make it easy to recognize which player it is)
