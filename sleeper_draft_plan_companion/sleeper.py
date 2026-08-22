@@ -27,8 +27,12 @@ PLAYERS_CACHE_FILE = "sleeper_players.json"
 _MEMO: tuple[dict[str, Any], float] | None = None
 
 
-def _fetch_json(url: str) -> Any:
-    """GET and parse. Raises on anything that isn't a clean response."""
+def fetch_json(url: str) -> Any:
+    """GET and parse. Raises on anything that isn't a clean response.
+
+    Public within the package: draft.py polls its own endpoints through this so
+    there is one place that owns timeouts and headers.
+    """
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(request, timeout=config.http_timeout_seconds()) as response:
         return json.load(response)
@@ -75,11 +79,19 @@ def load_players(*, fresh: bool = False) -> tuple[dict[str, Any], float]:
             # through and re-fetch, which also repairs the file.
             pass
 
-    players = _fetch_json(f"{BASE_URL}/players/nfl")
+    players = fetch_json(f"{BASE_URL}/players/nfl")
     fetched_at = time.time()
     _write_cache(path, {"fetched_at": fetched_at, "players": players})
     _MEMO = (players, fetched_at)
     return _MEMO
+
+
+def get_user(username: str) -> dict[str, Any] | None:
+    """Resolve a Sleeper username to its user record, or None if unknown."""
+    try:
+        return fetch_json(f"{BASE_URL}/user/{username}")
+    except Exception:
+        return None
 
 
 def summarize_players(players: dict[str, Any]) -> dict[str, Any]:

@@ -37,7 +37,7 @@ def counting_fetch(monkeypatch):
         calls.append(url)
         return FAKE_PLAYERS
 
-    monkeypatch.setattr(sleeper, "_fetch_json", fake_fetch)
+    monkeypatch.setattr(sleeper, "fetch_json", fake_fetch)
     return calls
 
 

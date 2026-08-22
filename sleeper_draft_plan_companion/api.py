@@ -19,7 +19,7 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from wsgiref.simple_server import make_server
 
-from . import sleeper
+from . import config, draft, sleeper
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 
@@ -63,10 +63,27 @@ def players_summary() -> dict[str, object]:
     return summary
 
 
+def draft_state() -> dict[str, object]:
+    """Live draft state, or an explanation of why there isn't one."""
+    identity = config.draft_identity()
+    draft_id = identity["draft_id"]
+    if not draft_id:
+        return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
+
+    try:
+        state = draft.build_state(draft_id, identity["username"])
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+    state["configured"] = True
+    return state
+
+
 # path -> handler returning a JSON-serializable payload.
 ROUTES: dict[str, Callable[[], object]] = {
     "/health": health,
     "/players/summary": players_summary,
+    "/draft-state": draft_state,
 }
 
 
