@@ -1,0 +1,82 @@
+name: Template bootstrap
+
+# Fires once, on the first push to main in a repo created from this template.
+# Renames the package and rewrites every place the template's own name is baked
+# in, then disables itself.
+#
+# It never edits a file under .github/workflows/ -- pushes made with
+# GITHUB_TOKEN are refused for workflow files. That is also why it cannot delete
+# itself; step 6 of docs/new-repo-checklist.md removes this file by hand.
+on:
+  push:
+    branches: [main]
+
+jobs:
+  bootstrap:
+    # Guard 1: never run in the template repository itself.
+    if: github.repository != 'wesnicol2/python-service-template'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # commit the rename
+      actions: write # disable this workflow afterwards
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Guard 2: the marker file means bootstrap has already run here.
+      - name: Check whether bootstrap is needed
+        id: check
+        run: |
+          if [ -f .template-bootstrapped ]; then
+            echo "already bootstrapped: $(cat .template-bootstrapped)"
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.check.outputs.needed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Rename template into this project
+        if: steps.check.outputs.needed == 'true'
+        run: python .github/bootstrap.py "${{ github.repository }}"
+
+      - name: Verify the renamed project still passes its own checks
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          pip install -e ".[dev]"
+          ruff check
+          ruff format --check
+          python -m pytest tests/ -q
+
+      - name: Commit
+        if: steps.check.outputs.needed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -q --cached .github/bootstrap.py
+          rm -f .github/bootstrap.py
+          git add -A
+          git commit -m "Bootstrap ${{ github.repository }} from python-service-template
+
+          Renamed the package, rewrote pyproject, Dockerfile, compose and README
+          to match this repository, and disabled the bootstrap workflow.
+
+          Next: docs/new-repo-checklist.md -- CI has NOT run yet, because pushes
+          made with GITHUB_TOKEN do not trigger workflows. Kick it once from the
+          Actions tab."
+          git push
+
+      # Belt and braces: even if the marker file is later deleted, the workflow
+      # itself is off. Non-fatal -- a failure here does not undo the rename.
+      - name: Disable this workflow
+        if: steps.check.outputs.needed == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PUT \
+            "repos/${{ github.repository }}/actions/workflows/template-bootstrap.yml/disable"

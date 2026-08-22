@@ -1,0 +1,35 @@
+services:
+  # Production. Tracks :latest, which CI publishes on every merge to main.
+  app:
+    image: ghcr.io/wesnicol2/python-service-template:latest
+    env_file:
+      # Optional: the defaults below work with no .env at all, so a fresh
+      # clone comes up without a setup step. Copy .env.example when you need
+      # real config. Requires Compose v2.24+.
+      - path: .env
+        required: false
+    ports:
+      - "${PROD_PORT:-8080}:8000"
+    volumes:
+      - ./data:/srv/data
+    restart: unless-stopped
+
+  # Test. Tracks :test, which CI publishes on every merge into a feature
+  # branch. Deliberately given its own data volume rather than sharing
+  # ./data: anything cached under there is production state, and letting
+  # test traffic write into it would corrupt it. The cost of separating
+  # them is that each environment spends its own upstream API quota, which
+  # is the right trade but worth knowing before exercising Test hard.
+  app-test:
+    image: ghcr.io/wesnicol2/python-service-template:test
+    env_file:
+      # Optional: the defaults below work with no .env at all, so a fresh
+      # clone comes up without a setup step. Copy .env.example when you need
+      # real config. Requires Compose v2.24+.
+      - path: .env
+        required: false
+    ports:
+      - "${TEST_PORT:-8081}:8000"
+    volumes:
+      - ./data-test:/srv/data
+    restart: unless-stopped

@@ -1,0 +1,35 @@
+name: Lint
+
+on:
+  workflow_call:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Reads the rule set and line length from pyproject.toml.
+      - name: Ruff check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: check
+
+      - name: Ruff format check
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: format --check
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Catches syntax errors in anything ruff happened to skip. Compiles the
+      # tracked .py files rather than naming the package, so renaming the
+      # package never requires editing a workflow file -- pushes made with
+      # GITHUB_TOKEN are refused for anything under .github/workflows/.
+      # `git ls-files` also means untracked scratch files can't fail the build.
+      - name: Compile check
+        run: git ls-files -z '*.py' | xargs -0 -r python -m py_compile

@@ -1,0 +1,3 @@
+# Runtime dependencies -- this is what the Dockerfile installs.
+# The day-one service is stdlib-only, so this file starts empty on purpose.
+# Dev/test-only tools belong in pyproject.toml's [project.optional-dependencies].

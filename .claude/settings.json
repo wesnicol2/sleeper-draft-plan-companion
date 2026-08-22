@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pip install -q -r requirements.txt && pip install -q -e '.[dev]' && echo 'Ready: ruff check | ruff format --check | python -m pytest tests/'",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

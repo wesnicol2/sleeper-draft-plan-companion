@@ -1,0 +1,61 @@
+name: CI
+
+# The only entrypoint. Everything else in this directory is a reusable
+# workflow called from here, so there is exactly one place to look when you
+# want to know what runs on a push.
+on:
+  push:
+    branches:
+      - main
+      - "dev/**"
+      - "feature/**"
+  pull_request:
+  # A push made with GITHUB_TOKEN (the one the bootstrap workflow makes) does
+  # not trigger workflow runs, so the first CI run in a fresh repo has to be
+  # kicked by hand. See docs/new-repo-checklist.md.
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Maps branch -> environment tag. See CONTRIBUTING.md "Environments".
+  #   feature/** -> :test    (Test)
+  #   main       -> :latest  (Production)
+  # dev/** derives no tag on purpose: the publish job is gated on a non-empty
+  # tag, so dev branches get lint and test but deploy nowhere.
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.derive.outputs.image_tag }}
+    steps:
+      - name: Derive image tag from ref
+        id: derive
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          case "$REF" in
+            refs/heads/main)       tag=latest ;;
+            refs/heads/feature/*)  tag=test ;;
+            *)                     tag= ;;
+          esac
+          echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "ref=$REF -> tag=${tag:-<none>}"
+
+  lint:
+    uses: ./.github/workflows/lint.yml
+
+  test:
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: [tag, lint, test]
+    # A pull request proves the code is good; the merge is what deploys.
+    if: github.event_name == 'push' && needs.tag.outputs.image_tag != ''
+    uses: ./.github/workflows/publish.yml
+    with:
+      image_tag: ${{ needs.tag.outputs.image_tag }}
+    permissions:
+      contents: read
+      packages: write

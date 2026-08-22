@@ -1,0 +1,14 @@
+.git
+.github
+.claude
+.venv
+__pycache__/
+*.py[cod]
+*.log
+.env
+/data/
+/data-test/
+/tests/
+/docs/
+scratch/
+tmp_*
