@@ -21,7 +21,7 @@ docker run -d \
   ghcr.io/wesnicol2/sleeper-draft-plan-companion:latest
 ```
 
-Then open `http://<host>:8082/health`. Or use the compose file, which mounts
+Then open `http://<host>:8082/` for the UI, or `/health` for the JSON probe. Or use the compose file, which mounts
 `./data` and reads `.env`:
 
 ```bash
@@ -64,13 +64,19 @@ CI runs exactly these on every push, and a red check blocks the merge.
 
 ## Endpoints
 
-`/health` — returns `{"status": "ok"}`. Everything else is yours to add; see
-`ROUTES` in `sleeper_draft_plan_companion/api.py`.
+- `/` — the UI.
+- `/ui/*` — static assets (HTML, CSS, JS), served straight off disk.
+- `/health` — returns `{"status": "ok"}`.
+
+JSON handlers are registered in `ROUTES` in
+`sleeper_draft_plan_companion/api.py`; anything not matched there falls through
+to the static handler.
 
 ## Project structure
 
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
+- `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
 - `tests/` — unit tests.
 - `docs/` — long-form specs, including the draft-companion planning docs.
 - `data/` — runtime state, git-ignored; mount this.
