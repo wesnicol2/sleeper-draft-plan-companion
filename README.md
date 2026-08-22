@@ -1,11 +1,13 @@
 # sleeper-draft-plan-companion
 
-A containerized Python service. Describe what it does here — one or two
-sentences, from the outside in.
+A second-screen companion for a live Sleeper fantasy football draft. It follows
+the draft as it happens, compares it against your draft plan, and continuously
+shows which players you should be considering right now — so you glance at a
+screen instead of doing roster math on the pick clock.
 
-> **Fresh from the template?** Work through
-> [docs/new-repo-checklist.md](docs/new-repo-checklist.md) first. It covers the
-> handful of things GitHub does not copy when you click *Use this template*.
+What it should eventually do is specified in
+[docs/draft-companion-planning/](docs/draft-companion-planning/); what it does
+today is whatever this README describes.
 
 ## Run it
 
@@ -14,16 +16,16 @@ CI publishes the image to GHCR, so there's nothing to build:
 ```bash
 docker run -d \
   --name sleeper-draft-plan-companion \
-  -p 8080:8000 \
+  -p 8082:8000 \
   -v /mnt/user/appdata/sleeper-draft-plan-companion/data:/srv/data \
   ghcr.io/wesnicol2/sleeper-draft-plan-companion:latest
 ```
 
-Then open `http://<host>:8080/health`. Or use the compose file, which mounts
+Then open `http://<host>:8082/health`. Or use the compose file, which mounts
 `./data` and reads `.env`:
 
 ```bash
-cp .env.example .env      # pick host ports that aren't already taken
+cp .env.example .env      # defaults to 8082/8083
 docker compose up -d
 ```
 
@@ -39,8 +41,8 @@ keeping across restarts.
 
 | Variable    | Required | Default | Purpose                          |
 | ----------- | -------- | ------- | -------------------------------- |
-| `PROD_PORT` | no       | `8080`  | Host port for the production container |
-| `TEST_PORT` | no       | `8081`  | Host port for the test container       |
+| `PROD_PORT` | no       | `8082`  | Host port for the production container |
+| `TEST_PORT` | no       | `8083`  | Host port for the test container       |
 | `TZ`        | no       | UTC     | Container timezone               |
 
 ## Run from source
@@ -70,7 +72,7 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
 - `tests/` — unit tests.
-- `docs/` — long-form docs and the new-repo checklist.
+- `docs/` — long-form specs, including the draft-companion planning docs.
 - `data/` — runtime state, git-ignored; mount this.
 
 ## Docs
