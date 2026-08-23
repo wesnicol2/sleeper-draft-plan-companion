@@ -138,3 +138,29 @@ def test_empty_checkpoint_list_is_rejected(data_dir):
     p = plan.load_plan()
     assert p["using_override"] is False
     assert "non-empty" in p["override_error"]
+
+
+def test_reading_the_plan_creates_nothing(tmp_path, monkeypatch):
+    """data_dir() is a path lookup, not a mkdir."""
+    target = tmp_path / "not-yet"
+    monkeypatch.setenv("DATA_DIR", str(target))
+
+    plan.load_plan()
+
+    assert not target.exists(), "merely reading the plan must not create DATA_DIR"
+
+
+def test_plan_loads_when_the_data_dir_cannot_be_created(tmp_path, monkeypatch):
+    """Regression: creating DATA_DIR as a side effect of *reading* the optional
+    override broke CI, where the runner cannot write /srv. Reproduced here by
+    making the parent a regular file, which defeats mkdir for any user --
+    running the suite as root would mask a permissions-based version of this.
+    """
+    blocker = tmp_path / "iam-a-file"
+    blocker.write_text("not a directory", encoding="utf-8")
+    monkeypatch.setenv("DATA_DIR", str(blocker / "data"))
+
+    p = plan.load_plan()
+
+    assert p["using_override"] is False
+    assert p["name"] == "Default draft plan"
