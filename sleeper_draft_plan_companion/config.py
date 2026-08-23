@@ -23,8 +23,20 @@ DEFAULT_PLAYERS_TTL_SECONDS = 24 * 60 * 60
 
 
 def data_dir() -> Path:
-    """Where cached upstream data lives, created on first use."""
-    path = Path(os.getenv("DATA_DIR", DEFAULT_DATA_DIR))
+    """Where cached upstream data lives. Pure -- creates nothing.
+
+    Reading a path must not have side effects. Creating the directory here
+    meant that merely *checking* whether an optional config file existed tried
+    to mkdir, which fails wherever the process cannot write the default
+    location -- caught by CI, where the runner is not root and /srv is not
+    writable.
+    """
+    return Path(os.getenv("DATA_DIR", DEFAULT_DATA_DIR))
+
+
+def ensure_data_dir() -> Path:
+    """data_dir(), created if missing. For callers that are about to write."""
+    path = data_dir()
     path.mkdir(parents=True, exist_ok=True)
     return path
 

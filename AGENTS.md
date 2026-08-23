@@ -66,6 +66,27 @@ not in Python. The plan changes between seasons and between leagues, and every
 year it is baked into a branch is a year the app is wrong until someone opens an
 editor.
 
+### Defense and kicker are out of scope, so the plan stops at round 14
+
+`docs/draft-companion-planning/draft-plan.txt` round 15 is "draft the defense
+with the easiest matchup (opponent has lowest implied team total)". The shipped
+plan config deliberately does not implement it, and `plan.checkpoint_for_round`
+returns None for round 15 rather than inventing a rule.
+
+This is a knowing divergence from a spec document. It is recorded here rather
+than by editing the spec, because `docs/*` are contracts an assistant must not
+change unasked -- the spec keeps saying what the system should eventually do,
+and this file says what the code does.
+
+Two things stand between here and implementing it. The board has four columns
+per the UI spec, so DEF needs a fifth column or a footer row; and "lowest
+implied team total" is odds data, which Sleeper does not provide at all. It is
+a data-source problem, not just a layout one.
+
+The plan validator rejects a minimum for any position the board does not track,
+so a hand-edited config asking for `DEF` fails loudly instead of leaving the
+board claiming a need that can never be satisfied.
+
 ### Sleeper `search_rank`, not ADP
 
 The UI spec says to rank undrafted players by "Sleeper ADP". Sleeper's public API

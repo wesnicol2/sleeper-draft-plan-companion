@@ -108,3 +108,13 @@ def test_summary_counts_only_active_drafted_positions():
     assert summary["active"] == 4, "the retired RB should not count"
     assert summary["by_position"] == {"QB": 1, "RB": 1, "WR": 1, "TE": 0}
     assert "K" not in summary["by_position"], "kickers are not drafted by this plan"
+
+
+def test_cache_path_lookup_creates_nothing(tmp_path, monkeypatch):
+    """The read side must stay pure; only _write_cache creates the directory."""
+    target = tmp_path / "untouched"
+    monkeypatch.setenv("DATA_DIR", str(target))
+
+    sleeper._cache_path()
+
+    assert not target.exists()
