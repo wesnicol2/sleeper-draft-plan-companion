@@ -8,6 +8,7 @@ far below Sleeper's rate limit.
 
 from __future__ import annotations
 
+import datetime as dt
 import time
 from typing import Any
 
@@ -37,6 +38,60 @@ def reset_cache() -> None:
 
 def get_draft(draft_id: str) -> dict[str, Any]:
     return _get(f"{sleeper.BASE_URL}/draft/{draft_id}")
+
+
+def seasons_to_scan(today: dt.date | None = None) -> list[str]:
+    """Which seasons to look for leagues in.
+
+    The current calendar year plus the one before it. A draft in August 2026 and
+    last year's completed draft are both worth reaching; anything older is
+    history, not something you are about to draft in.
+    """
+    year = (today or dt.date.today()).year
+    return [str(year), str(year - 1)]
+
+
+def list_drafts(username: str | None) -> dict[str, Any]:
+    """Every league draft this user can reach, newest season first.
+
+    Built on /user/<id>/leagues, not /user/<id>/drafts: the latter returned an
+    empty list for a season whose draft demonstrably exists, while the leagues
+    endpoint carries draft_id directly and was correct for every season tried.
+
+    Mock drafts are absent by construction -- Sleeper attaches them to no
+    league, so no endpoint lists them. That is why the UI also needs a
+    paste-an-id box.
+    """
+    if not username:
+        return {"drafts": [], "detail": "SLEEPER_USERNAME is not set"}
+
+    user = sleeper.get_user(username)
+    if not user or not user.get("user_id"):
+        return {"drafts": [], "detail": f"no Sleeper user called {username!r}"}
+
+    out: list[dict[str, Any]] = []
+    for season in seasons_to_scan():
+        leagues = _get(f"{sleeper.BASE_URL}/user/{user['user_id']}/leagues/nfl/{season}", ttl=60.0)
+        for league in leagues or []:
+            draft_id = league.get("draft_id")
+            if not draft_id:
+                continue
+            detail = get_draft(draft_id) or {}
+            settings = detail.get("settings") or {}
+            out.append(
+                {
+                    "draft_id": str(draft_id),
+                    "league_name": league.get("name"),
+                    "season": season,
+                    "status": detail.get("status") or league.get("status"),
+                    "teams": settings.get("teams"),
+                    "rounds": settings.get("rounds"),
+                    "finished": (detail.get("status") == "complete"),
+                }
+            )
+
+    out.sort(key=lambda d: (d["finished"], -int(d["season"])))
+    return {"drafts": out}
 
 
 def get_picks(draft_id: str) -> list[dict[str, Any]]:

@@ -136,3 +136,55 @@ def test_missing_draft_is_reported_not_guessed(monkeypatch):
     monkeypatch.setattr(draft, "get_draft", lambda _id: {})
     state = draft.build_state("nope", "wesnicol")
     assert state["error"] == "draft_not_found"
+
+
+def test_seasons_to_scan_is_this_year_and_last():
+    import datetime as dt
+
+    assert draft.seasons_to_scan(dt.date(2026, 8, 23)) == ["2026", "2025"]
+
+
+def test_list_drafts_uses_leagues_and_sorts_unfinished_first(monkeypatch):
+    """Built on /user/<id>/leagues because /user/<id>/drafts returned an empty
+    list for a season whose draft demonstrably exists."""
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(sleeper, "get_user", lambda _u: {"user_id": "u1"})
+    monkeypatch.setattr(draft, "seasons_to_scan", lambda *_a: ["2026", "2025"])
+
+    leagues = {
+        "2026": [{"league_id": "l26", "name": "Fantasy LEGENDS", "draft_id": "d26"}],
+        "2025": [{"league_id": "l25", "name": "Fantasy LEGENDS", "draft_id": "d25"}],
+    }
+    details = {
+        "d26": {"status": "pre_draft", "settings": {"teams": 12, "rounds": 15}},
+        "d25": {"status": "complete", "settings": {"teams": 12, "rounds": 15}},
+    }
+
+    def fake_get(url, ttl=None):
+        return leagues[url.rsplit("/", 1)[-1]]
+
+    monkeypatch.setattr(draft, "_get", fake_get)
+    monkeypatch.setattr(draft, "get_draft", lambda did: details[did])
+
+    result = draft.list_drafts("wesnicol")["drafts"]
+
+    assert [d["draft_id"] for d in result] == ["d26", "d25"], "unfinished sorts first"
+    assert result[0]["finished"] is False
+    assert result[1]["finished"] is True
+    assert result[0]["teams"] == 12
+
+
+def test_list_drafts_without_a_username_explains_itself():
+    result = draft.list_drafts(None)
+    assert result["drafts"] == []
+    assert "SLEEPER_USERNAME" in result["detail"]
+
+
+def test_list_drafts_with_unknown_username_explains_itself(monkeypatch):
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(sleeper, "get_user", lambda _u: None)
+    result = draft.list_drafts("nobody")
+    assert result["drafts"] == []
+    assert "nobody" in result["detail"]

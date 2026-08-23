@@ -48,7 +48,7 @@ keeping across restarts.
 | `PLAYERS_TTL_SECONDS`  | no       | `86400`     | How long the cached player file stays usable    |
 | `HTTP_TIMEOUT_SECONDS` | no       | `30`        | Timeout for a single Sleeper request            |
 | `SLEEPER_USERNAME`     | no       | —           | Your Sleeper username; used to find your draft slot |
-| `SLEEPER_DRAFT_ID`     | no       | —           | Which draft to follow. `/draft-state` is inert without it |
+| `SLEEPER_DRAFT_ID`     | no       | —           | Default draft to follow. The UI picker overrides it per browser |
 | `SLEEPER_LEAGUE_ID`    | no       | —           | Reserved; not read yet                          |
 | `SLEEPER_DRAFT_SLOT`   | no       | —           | Force your slot, for mock drafts that publish no draft order until they start |
 
@@ -77,9 +77,13 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/players/summary` — counts from Sleeper's player file, plus how stale the
   cache is. `503` if Sleeper is unreachable, which is deliberately distinct from
   a successful response reporting zero players.
+- `/drafts` — the league drafts your Sleeper user can reach, unfinished first.
+  Mock drafts are never listed; Sleeper attaches them to no league, so paste
+  their ID instead.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks
-  until your turn, and your roster grouped by position. Returns
-  `{"configured": false}` when `SLEEPER_DRAFT_ID` is unset.
+  until your turn, and your roster grouped by position. Takes `?draft_id=` to
+  override `SLEEPER_DRAFT_ID`; returns `{"configured": false}` when neither is
+  set.
 
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through

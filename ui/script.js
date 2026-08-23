@@ -1,6 +1,71 @@
 // The app takes no input during a draft, so everything refreshes on a timer.
 // See AGENTS.md, "No user interaction during the draft".
 const POLL_MS = 5000;
+const STORE_KEY = 'draftId';
+
+// Selection lives in the URL so a screen can be shared or bookmarked, and in
+// localStorage so a reload keeps it. The server stays stateless; when neither
+// is set it falls back to SLEEPER_DRAFT_ID.
+function selectedDraftId() {
+  const fromUrl = new URLSearchParams(location.search).get('draft_id');
+  if (fromUrl) return fromUrl;
+  try { return localStorage.getItem(STORE_KEY) || ''; } catch (e) { return ''; }
+}
+
+function selectDraft(id) {
+  try { localStorage.setItem(STORE_KEY, id); } catch (e) { /* private mode */ }
+  const url = new URL(location.href);
+  url.searchParams.set('draft_id', id);
+  history.replaceState(null, '', url);
+  renderDraftList(lastDrafts);
+  pollDraft();
+}
+
+let lastDrafts = [];
+
+function renderDraftList(drafts) {
+  lastDrafts = drafts || [];
+  const box = document.getElementById('draftList');
+  const current = selectedDraftId();
+
+  if (!lastDrafts.length) {
+    box.textContent = 'No league drafts found for this Sleeper user.';
+    return;
+  }
+
+  const groups = [
+    ['Unfinished', lastDrafts.filter(d => !d.finished)],
+    ['Complete', lastDrafts.filter(d => d.finished)],
+  ].filter(([, list]) => list.length);
+
+  box.classList.remove('muted');
+  box.innerHTML = groups.map(([label, list]) =>
+    '<div class="draft-group"><h3>' + label + '</h3>' +
+    list.map(d =>
+      '<button type="button" class="draft' + (d.draft_id === current ? ' active' : '') +
+      '" data-id="' + d.draft_id + '">' +
+      '<span>' + (d.league_name || 'Draft') + '</span>' +
+      '<span class="season">' + d.season + '</span>' +
+      '<span class="status">' + (d.status || '') + '</span>' +
+      '</button>').join('') +
+    '</div>').join('');
+
+  box.querySelectorAll('button.draft').forEach(btn =>
+    btn.addEventListener('click', () => selectDraft(btn.dataset.id)));
+}
+
+async function loadDrafts() {
+  try {
+    const res = await fetch('/drafts', { cache: 'no-store' });
+    const body = await res.json();
+    renderDraftList(body.drafts);
+    if (body.detail && !(body.drafts || []).length) {
+      document.getElementById('draftList').textContent = body.detail;
+    }
+  } catch (err) {
+    document.getElementById('draftList').textContent = 'could not load drafts';
+  }
+}
 
 function setHealth(state, label) {
   const el = document.getElementById('health');
@@ -64,7 +129,9 @@ async function pollDraft() {
   const recent = document.getElementById('recentPicks');
 
   try {
-    const res = await fetch('/draft-state', { cache: 'no-store' });
+    const id = selectedDraftId();
+    const res = await fetch('/draft-state' + (id ? '?draft_id=' + encodeURIComponent(id) : ''),
+                            { cache: 'no-store' });
     const s = await res.json();
 
     if (!res.ok) { headline.textContent = 'unavailable'; note.textContent = s.detail || ''; return; }
@@ -109,5 +176,17 @@ function tick() {
   pollDraft();
 }
 
+function wirePaste() {
+  const input = document.getElementById('draftIdInput');
+  const open = () => {
+    const id = input.value.trim();
+    if (id) selectDraft(id);
+  };
+  document.getElementById('draftIdOpen').addEventListener('click', open);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+}
+
+wirePaste();
+loadDrafts();
 tick();
 setInterval(tick, POLL_MS);
