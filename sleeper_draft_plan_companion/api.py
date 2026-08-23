@@ -83,8 +83,9 @@ def draft_state(query: dict[str, str]) -> dict[str, object]:
     if not draft_id:
         return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
 
+    fresh = query.get("fresh") in ("1", "true", "yes")
     try:
-        state = draft.build_state(draft_id, identity["username"])
+        state = draft.build_state(draft_id, identity["username"], fresh=fresh)
     except Exception as exc:
         raise Unavailable(str(exc)) from exc
 
