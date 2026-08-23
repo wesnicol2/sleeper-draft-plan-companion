@@ -105,3 +105,14 @@ button.refresh {
 }
 button.refresh:hover { background: #39404b; }
 button.refresh:disabled { opacity: 0.5; cursor: default; }
+
+.needpill {
+  display: inline-block; margin-right: 0.4rem; padding: 0.1rem 0.55rem;
+  border-radius: 999px; font-size: 0.82rem; font-weight: 600;
+  background: rgba(240,160,32,0.15); color: #f0a020;
+}
+.metpill {
+  display: inline-block; margin-right: 0.4rem; padding: 0.1rem 0.55rem;
+  border-radius: 999px; font-size: 0.82rem; color: var(--muted);
+  background: rgba(139,148,158,0.12);
+}

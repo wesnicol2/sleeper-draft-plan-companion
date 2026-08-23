@@ -20,6 +20,11 @@ dev = [
 # Flat layout: be explicit, or setuptools auto-discovery trips over tests/.
 packages = ["sleeper_draft_plan_companion"]
 
+[tool.setuptools.package-data]
+# The default draft plan is data, not code, and would otherwise be left out of
+# an installed package.
+sleeper_draft_plan_companion = ["draft_plan.json"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100

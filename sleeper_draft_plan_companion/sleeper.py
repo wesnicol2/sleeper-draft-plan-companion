@@ -39,6 +39,7 @@ def fetch_json(url: str) -> Any:
 
 
 def _cache_path() -> Path:
+    """Read side: must not create anything."""
     return config.data_dir() / PLAYERS_CACHE_FILE
 
 
@@ -49,6 +50,7 @@ def _write_cache(path: Path, payload: dict[str, Any]) -> None:
     that still parses as JSON is worse than no cache. os.replace is atomic
     within a filesystem, so a reader sees either the old file or the new one.
     """
+    config.ensure_data_dir()
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload), encoding="utf-8")
     tmp.replace(path)

@@ -132,6 +132,37 @@ async function pollPlayers() {
   }
 }
 
+function renderCheckpoint(s) {
+  const nameEl = document.getElementById('cpName');
+  const needsEl = document.getElementById('cpNeeds');
+  const guideEl = document.getElementById('cpGuidance');
+  const cp = s.checkpoint;
+
+  if (!cp) {
+    // The plan stops at round 14 on purpose -- defense is out of scope.
+    nameEl.textContent = s.on_the_clock ? 'No plan rules for this round' : '—';
+    needsEl.textContent = '';
+    guideEl.textContent = '';
+    return;
+  }
+
+  let head = cp.name;
+  if (cp.picks_left_in_checkpoint != null) {
+    head += ' · ' + cp.picks_left_in_checkpoint + ' picks left in it';
+  }
+  nameEl.textContent = head;
+
+  const needs = Object.entries(cp.still_needed || {});
+  const met = Object.keys(cp.minimums || {}).filter(p => !(cp.still_needed || {})[p]);
+  needsEl.innerHTML =
+    (needs.length
+      ? needs.map(([p, n]) => '<span class="needpill">need ' + n + ' ' + p + '</span>').join('')
+      : '<span class="metpill">all minimums met</span>') +
+    met.map(p => '<span class="metpill">' + p + ' &check;</span>').join('');
+
+  guideEl.textContent = (cp.lean ? 'Lean ' + cp.lean + '. ' : '') + (cp.guidance || '');
+}
+
 async function pollDraft(fresh) {
   const headline = document.getElementById('draftHeadline');
   const progress = document.getElementById('draftProgress');
@@ -176,6 +207,7 @@ async function pollDraft(fresh) {
       .join('  ');
 
     lastStatus = s.status || '';
+    renderCheckpoint(s);
     recent.innerHTML = (s.recent_picks || []).map(p =>
       '<li><span class="no">#' + p.pick_no + '</span>' +
       '<span class="pos">' + (p.position || '') + '</span>' +

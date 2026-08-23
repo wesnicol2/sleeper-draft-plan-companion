@@ -1,0 +1,39 @@
+{
+  "name": "Default draft plan",
+  "source": "docs/draft-companion-planning/draft-plan.txt",
+  "note": "Minimums are cumulative roster totals by the end of the checkpoint, not additional picks. Round 15 (defense) is intentionally absent -- see AGENTS.md.",
+  "checkpoints": [
+    {
+      "name": "Rounds 1-3",
+      "first_round": 1,
+      "last_round": 3,
+      "minimums": {"RB": 1, "WR": 1},
+      "lean": "RB",
+      "guidance": "Secure 2-3 studs at RB/WR, at least one of each. Lean RB."
+    },
+    {
+      "name": "Rounds 4-6",
+      "first_round": 4,
+      "last_round": 6,
+      "minimums": {"RB": 2, "WR": 2, "QB": 0, "TE": 0},
+      "lean": null,
+      "guidance": "Elite QB/TE only if stack synergy is available or they are falling far past ADP. Otherwise keep hammering RB/WR."
+    },
+    {
+      "name": "Rounds 7-9",
+      "first_round": 7,
+      "last_round": 9,
+      "minimums": {"RB": 3, "WR": 4},
+      "lean": "WR",
+      "guidance": "Fill in TE if you do not have one yet, without overpaying. Prioritise best available RB/WR value, leaning WR. Do not overpay for QB/TE depth yet."
+    },
+    {
+      "name": "Rounds 10-14",
+      "first_round": 10,
+      "last_round": 14,
+      "minimums": {"RB": 4, "WR": 5, "QB": 1, "TE": 1},
+      "lean": null,
+      "guidance": "Stack QB or TE if you do not have both. High-upside RB backups. Exactly one WR dart (rookie or role-shift in a strong offense). Optionally add one upside QB or TE."
+    }
+  ]
+}
