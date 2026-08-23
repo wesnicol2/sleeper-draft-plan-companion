@@ -62,3 +62,36 @@ main { display: grid; gap: 1rem; max-width: 46rem; }
 .picks .pos { color: var(--muted); min-width: 2rem; }
 
 .mine { color: var(--ok); font-weight: 600; }
+
+.draft-list { display: grid; gap: 0.4rem; }
+.draft-group { margin-top: 0.5rem; }
+.draft-group:first-child { margin-top: 0; }
+.draft-group h3 {
+  margin: 0 0 0.35rem; font-size: 0.72rem; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); font-weight: 600;
+}
+button.draft {
+  display: flex; gap: 0.6rem; align-items: baseline; width: 100%;
+  text-align: left; cursor: pointer;
+  background: transparent; color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px;
+  padding: 0.5rem 0.7rem; margin-bottom: 0.35rem;
+  font: inherit;
+}
+button.draft:hover { border-color: var(--muted); }
+button.draft.active { border-color: var(--ok); background: rgba(63,185,80,0.08); }
+button.draft .season { color: var(--muted); font-variant-numeric: tabular-nums; }
+button.draft .status { margin-left: auto; font-size: 0.8rem; color: var(--muted); }
+
+.paste { margin-top: 0.9rem; }
+.paste-row { display: flex; gap: 0.5rem; margin-top: 0.35rem; }
+.paste-row input {
+  flex: 1; background: var(--bg); color: var(--text);
+  border: 1px solid var(--edge); border-radius: 8px; padding: 0.45rem 0.6rem;
+  font: inherit; font-variant-numeric: tabular-nums;
+}
+.paste-row button {
+  background: var(--edge); color: var(--text); border: 0;
+  border-radius: 8px; padding: 0.45rem 0.9rem; font: inherit; cursor: pointer;
+}
+.paste-row button:hover { background: #39404b; }

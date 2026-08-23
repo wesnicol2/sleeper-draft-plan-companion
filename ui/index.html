@@ -29,6 +29,20 @@
     </section>
 
     <section class="card">
+      <h2>Choose a draft</h2>
+      <div id="draftList" class="draft-list muted">loading…</div>
+      <div class="paste">
+        <label for="draftIdInput" class="muted">Or paste a draft ID (mock drafts
+          aren't listed by Sleeper):</label>
+        <div class="paste-row">
+          <input id="draftIdInput" type="text" inputmode="numeric"
+                 placeholder="1397021212936306688" autocomplete="off">
+          <button id="draftIdOpen" type="button">Open</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
       <h2>Draft</h2>
       <p id="draftHeadline">—</p>
       <p class="muted" id="draftProgress">&nbsp;</p>
