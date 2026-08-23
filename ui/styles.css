@@ -47,3 +47,18 @@ main { display: grid; gap: 1rem; max-width: 46rem; }
 .pill-ok      { background: rgba(63,185,80,0.15);  color: var(--ok); }
 .pill-bad     { background: rgba(248,81,73,0.15);  color: var(--bad); }
 .pill-unknown { background: rgba(139,148,158,0.15); color: var(--unknown); }
+
+.counts { font-variant-numeric: tabular-nums; }
+.counts .pos { color: var(--muted); margin-right: 0.25rem; }
+.counts .n { display: inline-block; min-width: 1.2rem; font-weight: 600; }
+
+.picks { list-style: none; margin: 0.75rem 0 0; padding: 0; }
+.picks li {
+  display: flex; gap: 0.6rem; align-items: baseline;
+  padding: 0.2rem 0; border-top: 1px solid var(--edge);
+  font-size: 0.92rem;
+}
+.picks .no { color: var(--muted); min-width: 3.2rem; font-variant-numeric: tabular-nums; }
+.picks .pos { color: var(--muted); min-width: 2rem; }
+
+.mine { color: var(--ok); font-weight: 600; }

@@ -39,6 +39,17 @@ def http_timeout_seconds() -> int:
     return int(os.getenv("HTTP_TIMEOUT_SECONDS", "30"))
 
 
+def draft_slot_override() -> int | None:
+    """Force which draft slot is "me", bypassing draft_order lookup.
+
+    A mock draft publishes no draft_order until it starts, so before the first
+    pick there is no way to resolve a username to a slot. This is the escape
+    hatch for testing against one.
+    """
+    raw = os.getenv("SLEEPER_DRAFT_SLOT")
+    return int(raw) if raw else None
+
+
 def draft_identity() -> dict[str, str | None]:
     """Which draft the app is following.
 
