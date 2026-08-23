@@ -13,6 +13,7 @@ import time
 from typing import Any
 
 from . import config, sleeper
+from . import plan as plan_module
 
 DRAFTED_POSITIONS = ("QB", "RB", "WR", "TE")
 
@@ -199,6 +200,38 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
         else None
     )
 
+    counts = {pos: len(players) for pos, players in roster.items()}
+    active_plan = plan_module.load_plan()
+    current_round = round_of(on_the_clock_no, teams) if on_the_clock_no else rounds
+    checkpoint = plan_module.checkpoint_for_round(active_plan, current_round)
+    checkpoint_view = None
+    if checkpoint is not None:
+        minimums = checkpoint["minimums"]
+        # Cumulative totals, so "still needed" is the shortfall against the
+        # roster you already hold, not a count of picks to spend.
+        still_needed = {
+            pos: max(0, req - counts.get(pos, 0)) for pos, req in minimums.items() if req
+        }
+        cp_last_pick = (
+            next_pick_for_slot((checkpoint["last_round"] - 1) * teams + 1, slot, teams, rounds)
+            if slot is not None
+            else None
+        )
+        checkpoint_view = {
+            "name": checkpoint["name"],
+            "first_round": checkpoint["first_round"],
+            "last_round": checkpoint["last_round"],
+            "minimums": minimums,
+            "lean": checkpoint.get("lean"),
+            "guidance": checkpoint.get("guidance"),
+            "still_needed": {k: v for k, v in still_needed.items() if v},
+            "picks_left_in_checkpoint": (
+                cp_last_pick - on_the_clock_no + 1
+                if cp_last_pick and on_the_clock_no and cp_last_pick >= on_the_clock_no
+                else None
+            ),
+        }
+
     return {
         "draft_id": draft_id,
         "status": draft.get("status"),
@@ -222,7 +255,9 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
         "my_next_pick_no": my_next,
         "picks_until_my_turn": (my_next - on_the_clock_no if my_next and on_the_clock_no else None),
         "my_roster": roster,
-        "my_counts": {pos: len(players) for pos, players in roster.items()},
+        "my_counts": counts,
+        "checkpoint": checkpoint_view,
+        "plan_name": active_plan.get("name"),
         "recent_picks": [
             {
                 "pick_no": p.get("pick_no"),

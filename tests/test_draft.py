@@ -221,3 +221,54 @@ def test_cache_ttl_is_short_enough_for_a_2s_poll():
     """A cache longer than the poll interval makes picks invisible for longer
     than the poll rate suggests."""
     assert draft.CACHE_TTL_SECONDS <= 2.0
+
+
+def test_state_reports_the_active_checkpoint_and_shortfall(monkeypatch, tmp_path):
+    """Minimums are cumulative totals, so 'still needed' is the shortfall
+    against the roster you hold -- not a count of picks to spend."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "10")
+
+    # 100 picks made -> round 9. Slot 10 owns picks 10, 15, 34, 39, 58, 63,
+    # 82 and 87 by then, so its roster is exactly those eight.
+    mine = {10: "RB", 15: "RB", 34: "WR", 39: "WR", 58: "WR", 63: "QB", 82: "TE", 87: "TE"}
+    picks = []
+    for n in range(1, 101):
+        slot = slot_for(n)
+        if slot == 10:
+            picks.append(_pick(n, 10, "Mine", str(n), mine[n]))
+        else:
+            picks.append(_pick(n, slot, "Other", str(n), "RB"))
+
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft())
+    monkeypatch.setattr(draft, "get_picks", lambda _id, fresh=False: picks)
+
+    state = draft.build_state("d1", "wesnicol")
+
+    cp = state["checkpoint"]
+    assert cp["name"] == "Rounds 7-9"
+    assert cp["minimums"] == {"RB": 3, "WR": 4}
+    assert state["my_counts"] == {"QB": 1, "RB": 2, "WR": 3, "TE": 2}
+    # RB is one short of 3, WR one short of 4. QB and TE have no minimum here
+    # and must not appear even though the roster holds some.
+    assert cp["still_needed"] == {"RB": 1, "WR": 1}
+    assert cp["lean"] == "WR"
+
+
+def test_state_has_no_checkpoint_past_the_planned_rounds(monkeypatch, tmp_path):
+    """Round 15 is defense, which is out of scope, so the plan simply ends."""
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "10")
+    picks = [_pick(n, slot_for(n), "P", str(n), "RB") for n in range(1, 169)]
+
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft())
+    monkeypatch.setattr(draft, "get_picks", lambda _id, fresh=False: picks)
+
+    state = draft.build_state("d1", "wesnicol")
+
+    assert state["on_the_clock"]["round"] == 15
+    assert state["checkpoint"] is None
+
+
+def slot_for(pick_no):
+    return draft.slot_on_the_clock(pick_no, TEAMS)

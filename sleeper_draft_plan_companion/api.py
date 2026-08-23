@@ -21,6 +21,7 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from . import config, draft, sleeper
+from . import plan as plan_module
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 
@@ -72,6 +73,14 @@ def drafts(query: dict[str, str]) -> dict[str, object]:
         raise Unavailable(str(exc)) from exc
 
 
+def plan(query: dict[str, str]) -> dict[str, object]:
+    """The active draft plan, and where it came from."""
+    try:
+        return plan_module.load_plan()
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+
 def draft_state(query: dict[str, str]) -> dict[str, object]:
     """Live draft state, or an explanation of why there isn't one.
 
@@ -98,6 +107,7 @@ ROUTES: dict[str, Callable[[dict[str, str]], object]] = {
     "/health": health,
     "/players/summary": players_summary,
     "/drafts": drafts,
+    "/plan": plan,
     "/draft-state": draft_state,
 }
 

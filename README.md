@@ -80,6 +80,8 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/drafts` — the league drafts your Sleeper user can reach, unfinished first.
   Mock drafts are never listed; Sleeper attaches them to no league, so paste
   their ID instead.
+- `/plan` — the active draft plan: checkpoints, per-position minimums, and
+  which file it came from.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks
   until your turn, and your roster grouped by position. Takes `?draft_id=` to
   override `SLEEPER_DRAFT_ID` and `?fresh=1` to skip the server's read cache;
@@ -88,6 +90,21 @@ CI runs exactly these on every push, and a red check blocks the merge.
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
 to the static handler.
+
+## The draft plan
+
+Checkpoints and their per-position minimums live in configuration, not code.
+A default ships inside the package; drop your own `draft_plan.json` into the
+mounted data directory to override it without rebuilding the image.
+
+Minimums are **cumulative roster totals** by the end of a checkpoint, not extra
+picks: `"RB": 3` for rounds 7-9 means three running backs in total.
+
+A broken override does not take the app down mid-draft — it falls back to the
+packaged plan and reports the problem in `/plan`'s `override_error`.
+
+The plan covers **rounds 1-14**. Round 15 in the spec is a defense pick, and
+defenses are out of scope; see AGENTS.md.
 
 ## Refresh behaviour
 
