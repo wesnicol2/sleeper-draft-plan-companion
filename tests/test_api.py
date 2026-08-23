@@ -124,7 +124,7 @@ def test_draft_id_query_param_overrides_the_env(monkeypatch):
     monkeypatch.setenv("SLEEPER_DRAFT_ID", "from-env")
     seen = {}
 
-    def fake_state(draft_id, username=None):
+    def fake_state(draft_id, username=None, fresh=False):
         seen["draft_id"] = draft_id
         return {"draft_id": draft_id}
 
@@ -142,7 +142,7 @@ def test_draft_state_falls_back_to_the_env_without_a_query(monkeypatch):
 
     monkeypatch.setenv("SLEEPER_DRAFT_ID", "from-env")
     monkeypatch.setattr(
-        draft, "build_state", lambda draft_id, username=None: {"draft_id": draft_id}
+        draft, "build_state", lambda draft_id, username=None, fresh=False: {"draft_id": draft_id}
     )
 
     code, payload = call("/draft-state")
@@ -160,3 +160,22 @@ def test_drafts_endpoint_lists_them(monkeypatch):
 
     assert code == 200
     assert payload["drafts"][0]["draft_id"] == "d1"
+
+
+def test_fresh_query_param_reaches_build_state(monkeypatch):
+    from sleeper_draft_plan_companion import draft
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "d1")
+    seen = {}
+
+    def fake_state(draft_id, username=None, fresh=False):
+        seen["fresh"] = fresh
+        return {"draft_id": draft_id}
+
+    monkeypatch.setattr(draft, "build_state", fake_state)
+
+    call("/draft-state")
+    assert seen["fresh"] is False
+
+    call("/draft-state?fresh=1")
+    assert seen["fresh"] is True

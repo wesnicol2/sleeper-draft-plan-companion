@@ -18,7 +18,12 @@ DRAFTED_POSITIONS = ("QB", "RB", "WR", "TE")
 
 # url -> (payload, fetched_at). Small and short-lived on purpose.
 _CACHE: dict[str, tuple[Any, float]] = {}
-CACHE_TTL_SECONDS = 3.0
+
+# One second, not three. During a live draft the UI polls every 2s, so a 3s
+# cache meant a pick could sit invisible for 8s (5s poll + 3s cache) even
+# though Sleeper already knew about it. One second still collapses the burst
+# from several open screens without adding meaningful lag.
+CACHE_TTL_SECONDS = 1.0
 
 
 def _get(url: str, ttl: float = CACHE_TTL_SECONDS) -> Any:
@@ -36,8 +41,8 @@ def reset_cache() -> None:
     _CACHE.clear()
 
 
-def get_draft(draft_id: str) -> dict[str, Any]:
-    return _get(f"{sleeper.BASE_URL}/draft/{draft_id}")
+def get_draft(draft_id: str, fresh: bool = False) -> dict[str, Any]:
+    return _get(f"{sleeper.BASE_URL}/draft/{draft_id}", ttl=0.0 if fresh else CACHE_TTL_SECONDS)
 
 
 def seasons_to_scan(today: dt.date | None = None) -> list[str]:
@@ -94,8 +99,9 @@ def list_drafts(username: str | None) -> dict[str, Any]:
     return {"drafts": out}
 
 
-def get_picks(draft_id: str) -> list[dict[str, Any]]:
-    return _get(f"{sleeper.BASE_URL}/draft/{draft_id}/picks") or []
+def get_picks(draft_id: str, fresh: bool = False) -> list[dict[str, Any]]:
+    url = f"{sleeper.BASE_URL}/draft/{draft_id}/picks"
+    return _get(url, ttl=0.0 if fresh else CACHE_TTL_SECONDS) or []
 
 
 def slot_on_the_clock(pick_no: int, teams: int) -> int:
@@ -150,9 +156,14 @@ def _resolve_slot(draft: dict[str, Any], username: str | None) -> tuple[int | No
     return int(slot), None
 
 
-def build_state(draft_id: str, username: str | None = None) -> dict[str, Any]:
-    """Everything the UI needs about the draft as it stands right now."""
-    draft = get_draft(draft_id)
+def build_state(draft_id: str, username: str | None = None, fresh: bool = False) -> dict[str, Any]:
+    """Everything the UI needs about the draft as it stands right now.
+
+    `fresh=True` skips the read cache entirely. That is what the manual refresh
+    button uses -- a button that could hand back a cached answer is worse than
+    no button, because you cannot tell the difference from the outside.
+    """
+    draft = get_draft(draft_id, fresh=fresh)
     if not draft or not draft.get("draft_id"):
         return {"error": "draft_not_found", "draft_id": draft_id}
 
@@ -161,7 +172,7 @@ def build_state(draft_id: str, username: str | None = None) -> dict[str, Any]:
     rounds = int(settings.get("rounds") or 15)
     total_picks = teams * rounds
 
-    picks = get_picks(draft_id)
+    picks = get_picks(draft_id, fresh=fresh)
     made = len(picks)
     on_the_clock_no = made + 1 if made < total_picks else None
 

@@ -82,12 +82,27 @@ CI runs exactly these on every push, and a red check blocks the merge.
   their ID instead.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks
   until your turn, and your roster grouped by position. Takes `?draft_id=` to
-  override `SLEEPER_DRAFT_ID`; returns `{"configured": false}` when neither is
-  set.
+  override `SLEEPER_DRAFT_ID` and `?fresh=1` to skip the server's read cache;
+  returns `{"configured": false}` when neither draft id is set.
 
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
 to the static handler.
+
+## Refresh behaviour
+
+The board polls on its own; the Refresh button is an escape hatch, not the way
+you are meant to stay current. Poll rate follows the draft:
+
+| Draft status | Poll interval |
+| ------------ | ------------- |
+| `drafting`   | 2s            |
+| anything else | 10s          |
+
+The server caches draft reads for 1s, so a pick appears within roughly 3s of
+Sleeper knowing about it. Refresh sends `?fresh=1`, which skips that cache.
+The player pool is fetched once at load and then every 5 minutes — it changes
+about once a day.
 
 ## Project structure
 

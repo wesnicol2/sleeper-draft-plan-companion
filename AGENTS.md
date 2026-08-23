@@ -91,6 +91,26 @@ the server. It keeps the server stateless, lets two screens follow different
 drafts, and makes a selection shareable. `SLEEPER_DRAFT_ID` remains the default
 when nothing is chosen.
 
+### Poll rate follows the draft, and the button skips the cache
+
+The first cut polled every 5s with a 3s server cache, which meant a pick could
+sit invisible for 8s even though Sleeper already knew about it. The two numbers
+compounded, and the cache being longer than half the poll interval was the
+larger mistake.
+
+Now the poll is 2s while `status == "drafting"` and 10s otherwise, and the
+server cache is 1s. A completed or unstarted draft changes nothing, so polling
+it hard is pure waste; a live one is the whole point. Worst case during a draft
+is about 3s.
+
+The Refresh button sends `?fresh=1` and bypasses the read cache entirely. A
+refresh button that could return a cached answer is worse than no button --
+from the outside you cannot distinguish that from the button being broken.
+
+This does not contradict "no user interaction during the draft". The button is
+an escape hatch for when you do not trust what you are seeing; the design still
+assumes you never touch it.
+
 ### Bye weeks need a source that isn't Sleeper
 
 Bye-week collision highlighting is in the spec, but there is no bye-week field

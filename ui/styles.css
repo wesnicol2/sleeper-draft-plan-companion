@@ -95,3 +95,13 @@ button.draft .status { margin-left: auto; font-size: 0.8rem; color: var(--muted)
   border-radius: 8px; padding: 0.45rem 0.9rem; font: inherit; cursor: pointer;
 }
 .paste-row button:hover { background: #39404b; }
+
+.cardhead { display: flex; align-items: center; gap: 0.75rem; }
+.cardhead h2 { margin-bottom: 0; }
+button.refresh {
+  margin-left: auto; background: var(--edge); color: var(--text); border: 0;
+  border-radius: 8px; padding: 0.3rem 0.75rem; font: inherit; font-size: 0.82rem;
+  cursor: pointer;
+}
+button.refresh:hover { background: #39404b; }
+button.refresh:disabled { opacity: 0.5; cursor: default; }

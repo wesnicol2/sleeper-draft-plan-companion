@@ -1,6 +1,16 @@
 // The app takes no input during a draft, so everything refreshes on a timer.
 // See AGENTS.md, "No user interaction during the draft".
-const POLL_MS = 5000;
+// Poll rate follows the draft. While picks are landing you want the board
+// current; a completed or unstarted draft changes nothing, so hammering it is
+// pure waste. See AGENTS.md, "No user interaction during the draft" -- the
+// Refresh button is an escape hatch, not the intended way to stay current.
+const POLL_ACTIVE_MS = 2000;
+const POLL_IDLE_MS = 10000;
+// The player file changes about once a day; polling it with the draft was
+// ~12 pointless requests a minute.
+const PLAYERS_POLL_MS = 300000;
+let pollTimer = null;
+let lastStatus = '';
 const STORE_KEY = 'draftId';
 
 // Selection lives in the URL so a screen can be shared or bookmarked, and in
@@ -18,7 +28,8 @@ function selectDraft(id) {
   url.searchParams.set('draft_id', id);
   history.replaceState(null, '', url);
   renderDraftList(lastDrafts);
-  pollDraft();
+  lastStatus = '';
+  tick(true);
 }
 
 let lastDrafts = [];
@@ -121,7 +132,7 @@ async function pollPlayers() {
   }
 }
 
-async function pollDraft() {
+async function pollDraft(fresh) {
   const headline = document.getElementById('draftHeadline');
   const progress = document.getElementById('draftProgress');
   const note = document.getElementById('draftNote');
@@ -130,8 +141,11 @@ async function pollDraft() {
 
   try {
     const id = selectedDraftId();
-    const res = await fetch('/draft-state' + (id ? '?draft_id=' + encodeURIComponent(id) : ''),
-                            { cache: 'no-store' });
+    const params = new URLSearchParams();
+    if (id) params.set('draft_id', id);
+    if (fresh) params.set('fresh', '1');
+    const qs = params.toString();
+    const res = await fetch('/draft-state' + (qs ? '?' + qs : ''), { cache: 'no-store' });
     const s = await res.json();
 
     if (!res.ok) { headline.textContent = 'unavailable'; note.textContent = s.detail || ''; return; }
@@ -161,6 +175,7 @@ async function pollDraft() {
       .map(([pos, n]) => '<span class="pos">' + pos + '</span><span class="n">' + n + '</span>')
       .join('  ');
 
+    lastStatus = s.status || '';
     recent.innerHTML = (s.recent_picks || []).map(p =>
       '<li><span class="no">#' + p.pick_no + '</span>' +
       '<span class="pos">' + (p.position || '') + '</span>' +
@@ -170,10 +185,28 @@ async function pollDraft() {
   }
 }
 
-function tick() {
+function nextDelay() {
+  return lastStatus === 'drafting' ? POLL_ACTIVE_MS : POLL_IDLE_MS;
+}
+
+async function tick(fresh) {
   poll();
-  pollPlayers();
-  pollDraft();
+  await pollDraft(fresh);
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => tick(false), nextDelay());
+}
+
+async function manualRefresh() {
+  const btn = document.getElementById('refresh');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    await tick(true);
+    await pollPlayers();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+  }
 }
 
 function wirePaste() {
@@ -187,6 +220,8 @@ function wirePaste() {
 }
 
 wirePaste();
+document.getElementById('refresh').addEventListener('click', manualRefresh);
 loadDrafts();
-tick();
-setInterval(tick, POLL_MS);
+pollPlayers();
+setInterval(pollPlayers, PLAYERS_POLL_MS);
+tick(false);
