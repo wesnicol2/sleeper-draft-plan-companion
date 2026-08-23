@@ -18,6 +18,7 @@ NEXT STEPS:
     etc...
 - integrate with flock fantasy (or some other ranking online) for better fidelity rankings
 - Explicitly identify dropoffs/deadzones for each position - for WR it's after Jaylen Cocher
+- find some way to define value above replacement in the draft to highlight when a player is the last option before a drop off or something
 
 
 STRETCH GOALS: 
