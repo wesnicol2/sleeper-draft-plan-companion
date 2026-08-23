@@ -80,6 +80,9 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/drafts` — the league drafts your Sleeper user can reach, unfinished first.
   Mock drafts are never listed; Sleeper attaches them to no league, so paste
   their ID instead.
+- `/board` — the draft board: position columns in need order, your roster, and
+  the ranked undrafted pool. Takes the same `?draft_id=` and `?fresh=1` as
+  `/draft-state`.
 - `/plan` — the active draft plan: checkpoints, per-position minimums, and
   which file it came from.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks

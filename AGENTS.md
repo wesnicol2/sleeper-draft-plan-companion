@@ -87,6 +87,37 @@ The plan validator rejects a minimum for any position the board does not track,
 so a hand-edited config asking for `DEF` fails loudly instead of leaving the
 board claiming a need that can never be satisfied.
 
+### Column order is two bands, not one sort key
+
+The mockup states it as "position with the most needs is moved all the way to
+the left - if all needs are met, the weakest position is moved to the left".
+The trap is reading "weakest" as a global second key. It is not: it only
+applies among positions with no outstanding need.
+
+  1. positions still short, biggest shortfall first
+  2. then positions already met, fewest drafted first
+  3. fixed order RB/WR/TE/QB as the final tie-break
+
+The mockup proves the distinction. In the state it depicts, RB (needs 1, holds
+3) and TE (needs 1, holds 0) tie on need, and it puts **RB** first -- the
+opposite of weakest-first. A single sort key with "fewest drafted" second
+produces TE, RB, QB, WR and is wrong.
+
+The third key exists so the order cannot depend on dict iteration. Columns that
+reshuffle between polls read as the board glitching on a screen you are only
+glancing at.
+
+### Rows shown = picks left in the checkpoint
+
+Not a top-N. The mockup ends its list at "the total number of picks left in
+this checkpoint", which is the set of players you could still realistically
+take before the plan's next gate. When there is no active checkpoint -- past
+round 14, or before the draft starts -- it falls back to one round.
+
+Players with no `search_rank` are excluded rather than sorted last. An unranked
+player is one Sleeper has no opinion about, and padding the board with them
+crowds out real options.
+
 ### Sleeper `search_rank`, not ADP
 
 The UI spec says to rank undrafted players by "Sleeper ADP". Sleeper's public API

@@ -20,6 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
+from . import board as board_module
 from . import config, draft, sleeper
 from . import plan as plan_module
 
@@ -81,6 +82,23 @@ def plan(query: dict[str, str]) -> dict[str, object]:
         raise Unavailable(str(exc)) from exc
 
 
+def board(query: dict[str, str]) -> dict[str, object]:
+    """The draft board: ordered columns, your roster, and who is left."""
+    identity = config.draft_identity()
+    draft_id = query.get("draft_id") or identity["draft_id"]
+    if not draft_id:
+        return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
+
+    fresh = query.get("fresh") in ("1", "true", "yes")
+    try:
+        payload = board_module.build_board(draft_id, identity["username"], fresh=fresh)
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+    payload["configured"] = True
+    return payload
+
+
 def draft_state(query: dict[str, str]) -> dict[str, object]:
     """Live draft state, or an explanation of why there isn't one.
 
@@ -108,6 +126,7 @@ ROUTES: dict[str, Callable[[dict[str, str]], object]] = {
     "/players/summary": players_summary,
     "/drafts": drafts,
     "/plan": plan,
+    "/board": board,
     "/draft-state": draft_state,
 }
 
