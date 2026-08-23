@@ -74,6 +74,43 @@ own ordering and the closest available proxy, so that is what ranking uses.
 Ranking is kept pluggable because the spec lists configurable ranking as a
 stretch goal.
 
+### Draft discovery goes through leagues, and mocks can't be discovered at all
+
+`/v1/user/<id>/leagues/nfl/<season>` carries `draft_id` on each league and was
+correct for every season tried. `/v1/user/<id>/drafts/nfl/<season>` was not --
+it returned an empty list for a season whose draft demonstrably existed, so the
+picker is built on the leagues endpoint.
+
+Mock drafts are attached to no league and appear under neither user endpoint,
+even when their own metadata names a league. There is no way to enumerate them,
+which is why the picker ships with a paste-an-ID box rather than treating that
+as a nicety.
+
+The chosen draft lives in the URL (`?draft_id=`) and localStorage rather than on
+the server. It keeps the server stateless, lets two screens follow different
+drafts, and makes a selection shareable. `SLEEPER_DRAFT_ID` remains the default
+when nothing is chosen.
+
+### Poll rate follows the draft, and the button skips the cache
+
+The first cut polled every 5s with a 3s server cache, which meant a pick could
+sit invisible for 8s even though Sleeper already knew about it. The two numbers
+compounded, and the cache being longer than half the poll interval was the
+larger mistake.
+
+Now the poll is 2s while `status == "drafting"` and 10s otherwise, and the
+server cache is 1s. A completed or unstarted draft changes nothing, so polling
+it hard is pure waste; a live one is the whole point. Worst case during a draft
+is about 3s.
+
+The Refresh button sends `?fresh=1` and bypasses the read cache entirely. A
+refresh button that could return a cached answer is worse than no button --
+from the outside you cannot distinguish that from the button being broken.
+
+This does not contradict "no user interaction during the draft". The button is
+an escape hatch for when you do not trust what you are seeing; the design still
+assumes you never touch it.
+
 ### Bye weeks need a source that isn't Sleeper
 
 Bye-week collision highlighting is in the spec, but there is no bye-week field

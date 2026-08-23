@@ -1,6 +1,82 @@
 // The app takes no input during a draft, so everything refreshes on a timer.
 // See AGENTS.md, "No user interaction during the draft".
-const POLL_MS = 5000;
+// Poll rate follows the draft. While picks are landing you want the board
+// current; a completed or unstarted draft changes nothing, so hammering it is
+// pure waste. See AGENTS.md, "No user interaction during the draft" -- the
+// Refresh button is an escape hatch, not the intended way to stay current.
+const POLL_ACTIVE_MS = 2000;
+const POLL_IDLE_MS = 10000;
+// The player file changes about once a day; polling it with the draft was
+// ~12 pointless requests a minute.
+const PLAYERS_POLL_MS = 300000;
+let pollTimer = null;
+let lastStatus = '';
+const STORE_KEY = 'draftId';
+
+// Selection lives in the URL so a screen can be shared or bookmarked, and in
+// localStorage so a reload keeps it. The server stays stateless; when neither
+// is set it falls back to SLEEPER_DRAFT_ID.
+function selectedDraftId() {
+  const fromUrl = new URLSearchParams(location.search).get('draft_id');
+  if (fromUrl) return fromUrl;
+  try { return localStorage.getItem(STORE_KEY) || ''; } catch (e) { return ''; }
+}
+
+function selectDraft(id) {
+  try { localStorage.setItem(STORE_KEY, id); } catch (e) { /* private mode */ }
+  const url = new URL(location.href);
+  url.searchParams.set('draft_id', id);
+  history.replaceState(null, '', url);
+  renderDraftList(lastDrafts);
+  lastStatus = '';
+  tick(true);
+}
+
+let lastDrafts = [];
+
+function renderDraftList(drafts) {
+  lastDrafts = drafts || [];
+  const box = document.getElementById('draftList');
+  const current = selectedDraftId();
+
+  if (!lastDrafts.length) {
+    box.textContent = 'No league drafts found for this Sleeper user.';
+    return;
+  }
+
+  const groups = [
+    ['Unfinished', lastDrafts.filter(d => !d.finished)],
+    ['Complete', lastDrafts.filter(d => d.finished)],
+  ].filter(([, list]) => list.length);
+
+  box.classList.remove('muted');
+  box.innerHTML = groups.map(([label, list]) =>
+    '<div class="draft-group"><h3>' + label + '</h3>' +
+    list.map(d =>
+      '<button type="button" class="draft' + (d.draft_id === current ? ' active' : '') +
+      '" data-id="' + d.draft_id + '">' +
+      '<span>' + (d.league_name || 'Draft') + '</span>' +
+      '<span class="season">' + d.season + '</span>' +
+      '<span class="status">' + (d.status || '') + '</span>' +
+      '</button>').join('') +
+    '</div>').join('');
+
+  box.querySelectorAll('button.draft').forEach(btn =>
+    btn.addEventListener('click', () => selectDraft(btn.dataset.id)));
+}
+
+async function loadDrafts() {
+  try {
+    const res = await fetch('/drafts', { cache: 'no-store' });
+    const body = await res.json();
+    renderDraftList(body.drafts);
+    if (body.detail && !(body.drafts || []).length) {
+      document.getElementById('draftList').textContent = body.detail;
+    }
+  } catch (err) {
+    document.getElementById('draftList').textContent = 'could not load drafts';
+  }
+}
 
 function setHealth(state, label) {
   const el = document.getElementById('health');
@@ -56,7 +132,7 @@ async function pollPlayers() {
   }
 }
 
-async function pollDraft() {
+async function pollDraft(fresh) {
   const headline = document.getElementById('draftHeadline');
   const progress = document.getElementById('draftProgress');
   const note = document.getElementById('draftNote');
@@ -64,7 +140,12 @@ async function pollDraft() {
   const recent = document.getElementById('recentPicks');
 
   try {
-    const res = await fetch('/draft-state', { cache: 'no-store' });
+    const id = selectedDraftId();
+    const params = new URLSearchParams();
+    if (id) params.set('draft_id', id);
+    if (fresh) params.set('fresh', '1');
+    const qs = params.toString();
+    const res = await fetch('/draft-state' + (qs ? '?' + qs : ''), { cache: 'no-store' });
     const s = await res.json();
 
     if (!res.ok) { headline.textContent = 'unavailable'; note.textContent = s.detail || ''; return; }
@@ -94,6 +175,7 @@ async function pollDraft() {
       .map(([pos, n]) => '<span class="pos">' + pos + '</span><span class="n">' + n + '</span>')
       .join('  ');
 
+    lastStatus = s.status || '';
     recent.innerHTML = (s.recent_picks || []).map(p =>
       '<li><span class="no">#' + p.pick_no + '</span>' +
       '<span class="pos">' + (p.position || '') + '</span>' +
@@ -103,11 +185,43 @@ async function pollDraft() {
   }
 }
 
-function tick() {
-  poll();
-  pollPlayers();
-  pollDraft();
+function nextDelay() {
+  return lastStatus === 'drafting' ? POLL_ACTIVE_MS : POLL_IDLE_MS;
 }
 
-tick();
-setInterval(tick, POLL_MS);
+async function tick(fresh) {
+  poll();
+  await pollDraft(fresh);
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = setTimeout(() => tick(false), nextDelay());
+}
+
+async function manualRefresh() {
+  const btn = document.getElementById('refresh');
+  btn.disabled = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    await tick(true);
+    await pollPlayers();
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
+  }
+}
+
+function wirePaste() {
+  const input = document.getElementById('draftIdInput');
+  const open = () => {
+    const id = input.value.trim();
+    if (id) selectDraft(id);
+  };
+  document.getElementById('draftIdOpen').addEventListener('click', open);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+}
+
+wirePaste();
+document.getElementById('refresh').addEventListener('click', manualRefresh);
+loadDrafts();
+pollPlayers();
+setInterval(pollPlayers, PLAYERS_POLL_MS);
+tick(false);

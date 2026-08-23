@@ -79,8 +79,8 @@ def test_state_groups_my_roster_and_counts_it(monkeypatch):
         _pick(11, 11, "Someone", "Else", "RB"),
         _pick(15, 10, "Drake", "London", "WR"),
     ]
-    monkeypatch.setattr(draft, "get_draft", lambda _id: _fake_draft())
-    monkeypatch.setattr(draft, "get_picks", lambda _id: picks)
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft())
+    monkeypatch.setattr(draft, "get_picks", lambda _id, fresh=False: picks)
 
     state = draft.build_state("d1", "wesnicol")
 
@@ -93,9 +93,11 @@ def test_state_groups_my_roster_and_counts_it(monkeypatch):
 
 def test_state_flags_when_it_is_my_turn(monkeypatch):
     monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "4")
-    monkeypatch.setattr(draft, "get_draft", lambda _id: _fake_draft())
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft())
     monkeypatch.setattr(
-        draft, "get_picks", lambda _id: [_pick(n, n, "A", "B", "RB") for n in range(1, 4)]
+        draft,
+        "get_picks",
+        lambda _id, fresh=False: [_pick(n, n, "A", "B", "RB") for n in range(1, 4)],
     )
 
     state = draft.build_state("d1", "wesnicol")
@@ -108,8 +110,10 @@ def test_unstarted_mock_draft_says_why_it_cannot_find_me(monkeypatch):
     """A mock draft publishes no draft_order until it starts. Better to say so
     than to default to slot 1 and show someone else's roster as mine."""
     monkeypatch.delenv("SLEEPER_DRAFT_SLOT", raising=False)
-    monkeypatch.setattr(draft, "get_draft", lambda _id: _fake_draft(order={}, status="pre_draft"))
-    monkeypatch.setattr(draft, "get_picks", lambda _id: [])
+    monkeypatch.setattr(
+        draft, "get_draft", lambda _id, fresh=False: _fake_draft(order={}, status="pre_draft")
+    )
+    monkeypatch.setattr(draft, "get_picks", lambda _id, fresh=False: [])
 
     state = draft.build_state("d1", "wesnicol")
 
@@ -120,9 +124,11 @@ def test_unstarted_mock_draft_says_why_it_cannot_find_me(monkeypatch):
 
 def test_completed_draft_has_nobody_on_the_clock(monkeypatch):
     monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "10")
-    monkeypatch.setattr(draft, "get_draft", lambda _id: _fake_draft(status="complete"))
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft(status="complete"))
     monkeypatch.setattr(
-        draft, "get_picks", lambda _id: [_pick(n, 1, "A", "B", "RB") for n in range(1, 181)]
+        draft,
+        "get_picks",
+        lambda _id, fresh=False: [_pick(n, 1, "A", "B", "RB") for n in range(1, 181)],
     )
 
     state = draft.build_state("d1", "wesnicol")
@@ -133,6 +139,85 @@ def test_completed_draft_has_nobody_on_the_clock(monkeypatch):
 
 
 def test_missing_draft_is_reported_not_guessed(monkeypatch):
-    monkeypatch.setattr(draft, "get_draft", lambda _id: {})
+    monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: {})
     state = draft.build_state("nope", "wesnicol")
     assert state["error"] == "draft_not_found"
+
+
+def test_seasons_to_scan_is_this_year_and_last():
+    import datetime as dt
+
+    assert draft.seasons_to_scan(dt.date(2026, 8, 23)) == ["2026", "2025"]
+
+
+def test_list_drafts_uses_leagues_and_sorts_unfinished_first(monkeypatch):
+    """Built on /user/<id>/leagues because /user/<id>/drafts returned an empty
+    list for a season whose draft demonstrably exists."""
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(sleeper, "get_user", lambda _u: {"user_id": "u1"})
+    monkeypatch.setattr(draft, "seasons_to_scan", lambda *_a: ["2026", "2025"])
+
+    leagues = {
+        "2026": [{"league_id": "l26", "name": "Fantasy LEGENDS", "draft_id": "d26"}],
+        "2025": [{"league_id": "l25", "name": "Fantasy LEGENDS", "draft_id": "d25"}],
+    }
+    details = {
+        "d26": {"status": "pre_draft", "settings": {"teams": 12, "rounds": 15}},
+        "d25": {"status": "complete", "settings": {"teams": 12, "rounds": 15}},
+    }
+
+    def fake_get(url, ttl=None):
+        return leagues[url.rsplit("/", 1)[-1]]
+
+    monkeypatch.setattr(draft, "_get", fake_get)
+    monkeypatch.setattr(draft, "get_draft", lambda did, fresh=False: details[did])
+
+    result = draft.list_drafts("wesnicol")["drafts"]
+
+    assert [d["draft_id"] for d in result] == ["d26", "d25"], "unfinished sorts first"
+    assert result[0]["finished"] is False
+    assert result[1]["finished"] is True
+    assert result[0]["teams"] == 12
+
+
+def test_list_drafts_without_a_username_explains_itself():
+    result = draft.list_drafts(None)
+    assert result["drafts"] == []
+    assert "SLEEPER_USERNAME" in result["detail"]
+
+
+def test_list_drafts_with_unknown_username_explains_itself(monkeypatch):
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(sleeper, "get_user", lambda _u: None)
+    result = draft.list_drafts("nobody")
+    assert result["drafts"] == []
+    assert "nobody" in result["detail"]
+
+
+def test_fresh_bypasses_the_read_cache(monkeypatch):
+    """The Refresh button must not be able to hand back a cached answer --
+    from the outside you cannot tell that from the button not working."""
+    calls = []
+
+    def fake_fetch(url):
+        calls.append(url)
+        return {"draft_id": "d1", "settings": {"teams": 12, "rounds": 15}, "draft_order": {}}
+
+    from sleeper_draft_plan_companion import sleeper
+
+    monkeypatch.setattr(sleeper, "fetch_json", fake_fetch)
+
+    draft.get_draft("d1")
+    draft.get_draft("d1")
+    assert len(calls) == 1, "second read inside the TTL should be cached"
+
+    draft.get_draft("d1", fresh=True)
+    assert len(calls) == 2, "fresh=True must skip the cache"
+
+
+def test_cache_ttl_is_short_enough_for_a_2s_poll():
+    """A cache longer than the poll interval makes picks invisible for longer
+    than the poll rate suggests."""
+    assert draft.CACHE_TTL_SECONDS <= 2.0

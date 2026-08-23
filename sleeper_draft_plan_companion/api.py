@@ -17,6 +17,7 @@ import mimetypes
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from . import config, draft, sleeper
@@ -43,12 +44,12 @@ class Unavailable(Exception):
     """
 
 
-def health() -> dict[str, str]:
+def health(query: dict[str, str]) -> dict[str, str]:
     """Payload for GET /health. Keep this cheap -- it is polled."""
     return {"status": "ok"}
 
 
-def players_summary() -> dict[str, object]:
+def players_summary(query: dict[str, str]) -> dict[str, object]:
     """Counts from Sleeper's player file, plus how stale the cache is."""
     # Broad on purpose: a timeout, a DNS failure and malformed JSON are all
     # "Sleeper didn't give us players", and the caller treats them identically.
@@ -63,15 +64,28 @@ def players_summary() -> dict[str, object]:
     return summary
 
 
-def draft_state() -> dict[str, object]:
-    """Live draft state, or an explanation of why there isn't one."""
+def drafts(query: dict[str, str]) -> dict[str, object]:
+    """League drafts this user can reach, for the picker."""
+    try:
+        return draft.list_drafts(config.draft_identity()["username"])
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+
+def draft_state(query: dict[str, str]) -> dict[str, object]:
+    """Live draft state, or an explanation of why there isn't one.
+
+    ?draft_id= wins over SLEEPER_DRAFT_ID so the picker can switch drafts
+    without a container recreate, and two screens can watch different drafts.
+    """
     identity = config.draft_identity()
-    draft_id = identity["draft_id"]
+    draft_id = query.get("draft_id") or identity["draft_id"]
     if not draft_id:
         return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
 
+    fresh = query.get("fresh") in ("1", "true", "yes")
     try:
-        state = draft.build_state(draft_id, identity["username"])
+        state = draft.build_state(draft_id, identity["username"], fresh=fresh)
     except Exception as exc:
         raise Unavailable(str(exc)) from exc
 
@@ -79,10 +93,11 @@ def draft_state() -> dict[str, object]:
     return state
 
 
-# path -> handler returning a JSON-serializable payload.
-ROUTES: dict[str, Callable[[], object]] = {
+# path -> handler taking the parsed query string, returning a JSON payload.
+ROUTES: dict[str, Callable[[dict[str, str]], object]] = {
     "/health": health,
     "/players/summary": players_summary,
+    "/drafts": drafts,
     "/draft-state": draft_state,
 }
 
@@ -97,8 +112,10 @@ def application(environ: dict, start_response: Callable) -> Iterable[bytes]:
 
     handler = ROUTES.get(path.rstrip("/") or "/")
     if handler is not None:
+        # First value wins; nobody here wants repeated params.
+        query = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items() if v}
         try:
-            return _respond(start_response, 200, handler())
+            return _respond(start_response, 200, handler(query))
         except Unavailable as exc:
             return _respond(
                 start_response, 503, {"error": "upstream_unavailable", "detail": str(exc)}

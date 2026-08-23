@@ -13,7 +13,15 @@ def call_raw(path: str, method: str = "GET") -> tuple[int, dict[str, str], bytes
         captured["status"] = status
         captured["headers"] = headers
 
-    body = b"".join(application({"PATH_INFO": path, "REQUEST_METHOD": method}, start_response))
+    # A real WSGI server hands these over already split; do the same here or
+    # the router sees "/draft-state?draft_id=..." as a path and 404s.
+    path_info, _, query_string = path.partition("?")
+    environ = {
+        "PATH_INFO": path_info,
+        "QUERY_STRING": query_string,
+        "REQUEST_METHOD": method,
+    }
+    body = b"".join(application(environ, start_response))
     code = int(str(captured["status"]).split(" ", 1)[0])
     headers = {k.lower(): v for k, v in captured["headers"]}
     return code, headers, body
@@ -106,3 +114,68 @@ def test_players_summary_is_503_when_sleeper_is_unreachable(monkeypatch):
     assert code == 503
     assert payload["error"] == "upstream_unavailable"
     assert "connection refused" in payload["detail"]
+
+
+def test_draft_id_query_param_overrides_the_env(monkeypatch):
+    """The picker switches drafts without a container recreate, so the query
+    string has to win over SLEEPER_DRAFT_ID."""
+    from sleeper_draft_plan_companion import draft
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "from-env")
+    seen = {}
+
+    def fake_state(draft_id, username=None, fresh=False):
+        seen["draft_id"] = draft_id
+        return {"draft_id": draft_id}
+
+    monkeypatch.setattr(draft, "build_state", fake_state)
+
+    code, payload = call("/draft-state?draft_id=from-query")
+
+    assert code == 200
+    assert seen["draft_id"] == "from-query"
+    assert payload["configured"] is True
+
+
+def test_draft_state_falls_back_to_the_env_without_a_query(monkeypatch):
+    from sleeper_draft_plan_companion import draft
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "from-env")
+    monkeypatch.setattr(
+        draft, "build_state", lambda draft_id, username=None, fresh=False: {"draft_id": draft_id}
+    )
+
+    code, payload = call("/draft-state")
+
+    assert code == 200
+    assert payload["draft_id"] == "from-env"
+
+
+def test_drafts_endpoint_lists_them(monkeypatch):
+    from sleeper_draft_plan_companion import draft
+
+    monkeypatch.setattr(draft, "list_drafts", lambda _u: {"drafts": [{"draft_id": "d1"}]})
+
+    code, payload = call("/drafts")
+
+    assert code == 200
+    assert payload["drafts"][0]["draft_id"] == "d1"
+
+
+def test_fresh_query_param_reaches_build_state(monkeypatch):
+    from sleeper_draft_plan_companion import draft
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "d1")
+    seen = {}
+
+    def fake_state(draft_id, username=None, fresh=False):
+        seen["fresh"] = fresh
+        return {"draft_id": draft_id}
+
+    monkeypatch.setattr(draft, "build_state", fake_state)
+
+    call("/draft-state")
+    assert seen["fresh"] is False
+
+    call("/draft-state?fresh=1")
+    assert seen["fresh"] is True
