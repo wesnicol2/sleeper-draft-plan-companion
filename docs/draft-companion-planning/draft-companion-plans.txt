@@ -17,6 +17,7 @@ NEXT STEPS:
     - players with new, better teammates, 
     - starter injury possibility, 
     etc...
+- Implement some way to see what other players are available if you skip the one that is available now. For example - I might not want to draft a goodish QB in the 6th round if I remember there is an Okay QB in the 14th. I want to see those who might be available later so I don't blow my load in the earlier rounds than I need to. 
 - implement rankings so we can define an order for players. We should have rank, but rank can be manually set, adjusted, or you can pick from an array of options to rank with (adp or war) 
 - figure some way to define WAR (wins above replacement) - or just take it from rankings given? 
 - integrate with flock fantasy (or some other ranking online) for better fidelity rankings
