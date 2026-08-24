@@ -213,3 +213,113 @@ def test_build_board_uses_adp_when_fantasypros_succeeds(monkeypatch):
 
     assert "adp_error" not in result
     assert result["ranked"][0]["name"] == "Deep TE"
+
+
+def test_ranked_pool_reports_which_source_decided_each_row():
+    """A wrong order has to be arguable from the payload alone."""
+    adp_index = {"7": 2.5}  # Deep TE, search_rank 900
+    out = board.ranked_pool(PLAYERS, taken_ids={"3"}, limit=10, adp_index=adp_index)
+    by_name = {p["name"]: (p["rank_source"], p["rank_value"]) for p in out}
+
+    assert by_name["Deep TE"] == ("adp", 2.5)
+    assert by_name["Top RB"] == ("search_rank", 1)
+
+
+def _explain_env(monkeypatch, adp_index=None):
+    """Wire explain_rankings to the in-memory PLAYERS fixture."""
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"draft_id": "d1"})
+    monkeypatch.setattr(sleeper, "load_players", lambda: (PLAYERS, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [])
+    monkeypatch.setattr(
+        board, "adp_index_for", lambda *_a, **_k: (adp_index, "STD" if adp_index else None, None)
+    )
+
+
+def test_explain_rankings_shows_the_deciding_value(monkeypatch):
+    _explain_env(monkeypatch)
+
+    out = board.explain_rankings("d1", limit=10)
+    top = out["rows"][0]
+
+    assert top["rank_source"] == "search_rank"
+    assert top["rank_value"] == top["search_rank"] == 1
+    assert top["adp"] is None
+    # Four ranked players in the fixture; nothing is drafted in this env, so
+    # the one named "Drafted" counts too.
+    assert out["ranked_by"] == {"adp": 0, "search_rank": 4}
+
+
+def test_explain_rankings_counts_ties(monkeypatch):
+    """search_rank duplicates heavily -- three real 2026 players share rank 4 --
+    and each tie is broken by an arbitrary player_id, so it has to be visible."""
+    tied = {
+        "a": {"full_name": "A", "position": "RB", "active": True, "search_rank": 4, "team": "X"},
+        "b": {"full_name": "B", "position": "WR", "active": True, "search_rank": 4, "team": "Y"},
+        "c": {"full_name": "C", "position": "TE", "active": True, "search_rank": 9, "team": "Z"},
+    }
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"draft_id": "d1"})
+    monkeypatch.setattr(sleeper, "load_players", lambda: (tied, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [])
+    monkeypatch.setattr(board, "adp_index_for", lambda *_a, **_k: (None, None, None))
+
+    rows = board.explain_rankings("d1", limit=10)["rows"]
+    ties = {r["name"]: r["ties"] for r in rows}
+
+    assert ties == {"A": 2, "B": 2, "C": 1}
+
+
+def test_explain_rankings_shows_both_candidate_values_side_by_side(monkeypatch):
+    """The whole point: seeing that a player ranked by ADP also has a
+    search_rank, and how far apart the two are."""
+    _explain_env(monkeypatch, adp_index={"7": 1.0})
+
+    rows = {r["name"]: r for r in board.explain_rankings("d1", limit=10)["rows"]}
+    deep_te = rows["Deep TE"]
+
+    assert deep_te["rank_source"] == "adp"
+    assert deep_te["adp"] == 1.0
+    assert deep_te["search_rank"] == 900, "the losing value is still reported"
+    assert rows["Deep TE"]["rank"] == 1
+
+
+def test_explain_rankings_matches_the_board_order(monkeypatch):
+    """The debug view must not be able to disagree with what it explains."""
+    _explain_env(monkeypatch, adp_index={"7": 1.0})
+
+    explained = [r["name"] for r in board.explain_rankings("d1", limit=10)["rows"]]
+    ranked = [p["name"] for p in board.ranked_pool(PLAYERS, set(), 10, {"7": 1.0})]
+
+    assert explained == ranked
+
+
+def test_explain_rankings_surfaces_adp_failure_without_raising(monkeypatch):
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"draft_id": "d1"})
+    monkeypatch.setattr(sleeper, "load_players", lambda: (PLAYERS, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [])
+    monkeypatch.setattr(board, "adp_index_for", lambda *_a, **_k: (None, None, "no key"))
+
+    out = board.explain_rankings("d1", limit=10)
+
+    assert out["adp_error"] == "no key"
+    assert out["adp_players_matched"] == 0
+    assert out["rows"], "still explains the search_rank ordering"
+
+
+def test_explain_rankings_excludes_drafted_players(monkeypatch):
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"draft_id": "d1"})
+    monkeypatch.setattr(sleeper, "load_players", lambda: (PLAYERS, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [{"player_id": "1"}])
+    monkeypatch.setattr(board, "adp_index_for", lambda *_a, **_k: (None, None, None))
+
+    names = [r["name"] for r in board.explain_rankings("d1", limit=10)["rows"]]
+
+    assert "Top RB" not in names
+
+
+def test_explain_rankings_reports_a_missing_draft_like_the_board_does(monkeypatch):
+    """A mistyped id in a hand-typed debug URL is a user error, not a 503."""
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {})
+
+    out = board.explain_rankings("nope", limit=5)
+
+    assert out == {"error": "draft_not_found", "draft_id": "nope"}

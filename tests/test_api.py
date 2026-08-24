@@ -179,3 +179,65 @@ def test_fresh_query_param_reaches_build_state(monkeypatch):
 
     call("/draft-state?fresh=1")
     assert seen["fresh"] is True
+
+
+def test_rankings_endpoint_explains_the_order(monkeypatch):
+    from sleeper_draft_plan_companion import board as board_module
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "d1")
+    monkeypatch.setattr(
+        board_module,
+        "explain_rankings",
+        lambda draft_id, limit=40, fresh=False: {"draft_id": draft_id, "rows": [], "shown": 0},
+    )
+
+    code, payload = call("/rankings")
+
+    assert code == 200
+    assert payload["configured"] is True
+    assert payload["draft_id"] == "d1"
+
+
+def test_rankings_passes_limit_and_fresh_through(monkeypatch):
+    from sleeper_draft_plan_companion import board as board_module
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "d1")
+    seen = {}
+
+    def fake_explain(draft_id, limit=40, fresh=False):
+        seen.update(draft_id=draft_id, limit=limit, fresh=fresh)
+        return {"rows": []}
+
+    monkeypatch.setattr(board_module, "explain_rankings", fake_explain)
+
+    call("/rankings?limit=5&fresh=1&draft_id=from-query")
+
+    assert seen == {"draft_id": "from-query", "limit": 5, "fresh": True}
+
+
+def test_rankings_ignores_a_junk_limit_rather_than_500ing(monkeypatch):
+    """A debug endpoint is exactly where someone hand-types the query string."""
+    from sleeper_draft_plan_companion import board as board_module
+
+    monkeypatch.setenv("SLEEPER_DRAFT_ID", "d1")
+    seen = {}
+
+    def fake_explain(draft_id, limit=40, fresh=False):
+        seen["limit"] = limit
+        return {"rows": []}
+
+    monkeypatch.setattr(board_module, "explain_rankings", fake_explain)
+
+    code, _ = call("/rankings?limit=abc")
+
+    assert code == 200
+    assert seen["limit"] == 40
+
+
+def test_rankings_without_a_draft_id_says_so(monkeypatch):
+    monkeypatch.delenv("SLEEPER_DRAFT_ID", raising=False)
+
+    code, payload = call("/rankings")
+
+    assert code == 200
+    assert payload["configured"] is False

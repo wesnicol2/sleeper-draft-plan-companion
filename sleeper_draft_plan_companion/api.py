@@ -99,6 +99,34 @@ def board(query: dict[str, str]) -> dict[str, object]:
     return payload
 
 
+def rankings(query: dict[str, str]) -> dict[str, object]:
+    """Why the ranked pool is ordered the way it is. A debugging view.
+
+    Deliberately not part of the board payload: the grid stays the thing you
+    glance at during a draft, and this is the thing you read when the grid
+    looks wrong. `?limit=` because the interesting rows are usually the top
+    ones, but the whole pool is reachable.
+    """
+    identity = config.draft_identity()
+    draft_id = query.get("draft_id") or identity["draft_id"]
+    if not draft_id:
+        return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
+
+    try:
+        limit = int(query.get("limit", "40"))
+    except ValueError:
+        limit = 40
+
+    fresh = query.get("fresh") in ("1", "true", "yes")
+    try:
+        payload = board_module.explain_rankings(draft_id, limit=limit, fresh=fresh)
+    except Exception as exc:
+        raise Unavailable(str(exc)) from exc
+
+    payload["configured"] = True
+    return payload
+
+
 def draft_state(query: dict[str, str]) -> dict[str, object]:
     """Live draft state, or an explanation of why there isn't one.
 
@@ -127,6 +155,7 @@ ROUTES: dict[str, Callable[[dict[str, str]], object]] = {
     "/drafts": drafts,
     "/plan": plan,
     "/board": board,
+    "/rankings": rankings,
     "/draft-state": draft_state,
 }
 

@@ -193,6 +193,33 @@ nothing to resolve; a lookup failure falls back the same way -- both use
 `FANTASYPROS_SCORING`, a plain env var, since nothing else in this app knows a
 league's scoring settings today.
 
+### `/rankings` exists because a wrong order is otherwise unarguable
+
+The board shows a name in a slot and nothing about how it got there. "Josh
+Allen is too high" then has no next step — you cannot tell a bad ranking source
+from a bug in the sort from an arbitrary tie-break. So every ranked row carries
+`rank_source` and `rank_value`, and `/rankings` puts both candidate values side
+by side with a tie count.
+
+It answers the actual question immediately: Josh Allen sits third because
+Sleeper's `search_rank` for him is 3. That field behaves more like search
+popularity than draft position, which is the case for ADP in one line.
+
+The tie count is the part worth keeping. `search_rank` duplicates heavily --
+three different players share rank 4 in the 2026 pool, two share 5, two share 7
+-- and `ranked_pool` breaks every tie on `player_id`, which is arbitrary. That
+was invisible before: the board looked like a confident total ordering when
+parts of it were a coin flip. A row with `ties > 1` is there partly by luck.
+
+`explain_rankings` calls the same `ranked_pool` the board does, and both take
+their ADP through the shared `adp_index_for`, rather than re-deriving either.
+A debug view that can disagree with the thing it explains is worse than none,
+because it sends you looking for a bug in whichever one you trust less.
+
+It is a separate endpoint rather than extra UI because of "no user interaction
+during the draft" -- the grid stays the thing you glance at, and this is the
+thing you read when the grid looks wrong.
+
 ### Draft discovery goes through leagues, and mocks can't be discovered at all
 
 `/v1/user/<id>/leagues/nfl/<season>` carries `draft_id` on each league and was
