@@ -163,10 +163,119 @@ function renderCheckpoint(s) {
   guideEl.textContent = (cp.lean ? 'Lean ' + cp.lean + '. ' : '') + (cp.guidance || '');
 }
 
+// Names come from an upstream API, so they get escaped rather than trusted.
+const ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+function esc(value) {
+  return String(value == null ? '' : value).replace(/[&<>"]/g, c => ESCAPES[c]);
+}
+
+// Every cell is placed explicitly rather than left to grid auto-flow. The
+// bands have different shapes -- several cells span a whole band -- and mixing
+// spans into auto-flow reflows everything after them.
+function cell(row, col, cls, html, rowSpan) {
+  const span = rowSpan > 1 ? ' / span ' + rowSpan : '';
+  return '<div class="' + cls + '" style="grid-row:' + row + span +
+         ';grid-column:' + col + '">' + html + '</div>';
+}
+
+function playerCell(p) {
+  return '<span class="pname">' + esc(p.name) + '</span>' +
+         '<span class="pmeta">' + esc(p.team || 'FA') + '</span>';
+}
+
+// The grid is drawn exactly as the server ordered it. `columns` and `ranked`
+// are treated as opaque and already sorted: what produces that order is a
+// server-side decision (search_rank today, configurable rankings or WAR later
+// per the spec's NEXT STEPS), and re-sorting here would quietly fork it.
+function renderBoard(b) {
+  const grid = document.getElementById('boardGrid');
+  const columns = b.columns || [];
+  if (!columns.length) { grid.innerHTML = ''; return; }
+
+  const roster = b.my_roster || {};
+  const cp = b.checkpoint;
+  const needs = (cp && cp.still_needed) || {};
+  const ranked = b.ranked || [];
+  const rows = b.rows || ranked.length;
+
+  // Band heights. Math.max needs a seed: spreading an empty array yields
+  // -Infinity, which would render a grid with no rows at all.
+  const draftedRows = Math.max(0, ...columns.map(p => (roster[p] || []).length));
+  const needRows = cp ? Math.max(1, ...Object.values(needs)) : 0;
+
+  // Column 1 is the band-label gutter, so position columns start at 2.
+  const colOf = p => columns.indexOf(p) + 2;
+  const out = [];
+
+  let r = 1;
+  const headRow = r++;
+  const draftedStart = r; r += draftedRows;
+  const dividerRow = r++;
+  const needStart = r; r += needRows;
+  const rankedStart = r;
+
+  out.push(cell(headRow, 1, 'gcell gutter', ''));
+  columns.forEach(p => out.push(cell(headRow, colOf(p), 'gcell ghead', esc(p))));
+
+  // Drafted band, first drafted in the highest row per the UI spec's row order.
+  if (draftedRows) {
+    out.push(cell(draftedStart, 1, 'gcell gutter', 'DRAFTED', draftedRows));
+    columns.forEach(p => {
+      const held = roster[p] || [];
+      for (let i = 0; i < draftedRows; i++) {
+        out.push(held[i]
+          ? cell(draftedStart + i, colOf(p), 'gcell gplayer gdrafted', playerCell(held[i]))
+          : cell(draftedStart + i, colOf(p), 'gcell gblank', ''));
+      }
+    });
+  }
+
+  // "Solid defining line between already drafted (above) and being drafted".
+  out.push(cell(dividerRow, '1 / -1', 'gdivider', ''));
+
+  // The needs band only exists while a checkpoint does. Past the plan's last
+  // round there are no rules, so drawing empty boxes would imply otherwise.
+  if (cp) {
+    out.push(cell(needStart, 1, 'gcell gutter', 'NEEDS', needRows));
+    columns.forEach(p => {
+      const short = needs[p] || 0;
+      if (short > 0) {
+        for (let i = 0; i < needRows; i++) {
+          out.push(i < short
+            ? cell(needStart + i, colOf(p), 'gcell gneed', 'need ' + esc(p))
+            : cell(needStart + i, colOf(p), 'gcell gblank', ''));
+        }
+      } else {
+        // The mockup's dotted box: "positions which aren't required in this
+        // checkpoint or are already fulfilled". One box for the whole band.
+        out.push(cell(needStart, colOf(p), 'gcell gnonneed', 'not required', needRows));
+      }
+    });
+  }
+
+  // Ranked band: one player per row, in their own position's column, so
+  // vertical position reads as rank and horizontal as position.
+  out.push(cell(rankedStart, 1, 'gcell gutter', 'RANKED', rows));
+  for (let i = 0; i < rows; i++) {
+    const p = ranked[i];
+    columns.forEach(q => {
+      out.push(p && p.position === q
+        ? cell(rankedStart + i, colOf(q), 'gcell gplayer granked',
+               '<span class="prank">' + esc(p.rank) + '</span>' + playerCell(p))
+        : cell(rankedStart + i, colOf(q), 'gcell gblank', ''));
+    });
+  }
+
+  grid.style.gridTemplateColumns = 'auto repeat(' + columns.length + ', minmax(0, 1fr))';
+  grid.innerHTML = out.join('');
+
+  document.getElementById('boardMeta').textContent = cp
+    ? cp.name + ' · ' + rows + ' picks left in it'
+    : 'no plan for this round · showing ' + rows;
+}
+
 async function pollBoard(fresh) {
-  const colsEl = document.getElementById('boardColumns');
-  const rowsEl = document.getElementById('boardRows');
-  const listEl = document.getElementById('boardRanked');
+  const note = document.getElementById('boardNote');
   try {
     const id = selectedDraftId();
     const params = new URLSearchParams();
@@ -176,26 +285,15 @@ async function pollBoard(fresh) {
     const res = await fetch('/board' + (qs ? '?' + qs : ''), { cache: 'no-store' });
     const b = await res.json();
     if (!res.ok || !b.configured || b.error) {
-      colsEl.textContent = ''; rowsEl.textContent = ''; listEl.innerHTML = '';
+      document.getElementById('boardGrid').innerHTML = '';
+      document.getElementById('boardMeta').textContent = '';
+      note.textContent = b.detail || b.error || 'board unavailable';
       return;
     }
-    colsEl.innerHTML = (b.columns || [])
-      .map((p, i) => '<span class="pos">' + (i + 1) + '.</span><span class="n">' + p + '</span>')
-      .join('  ');
-    rowsEl.textContent = (b.ranked || []).length + ' of ' + b.rows +
-      ' rows shown (rows = picks left in the checkpoint)';
-    listEl.innerHTML = (b.ranked || []).slice(0, 12).map(p =>
-      '<li><span class="no">' + p.rank + '</span>' +
-      '<span class="pos">' + (p.position || '') + '</span>' +
-      '<span>' + (p.name || '') + '</span>' +
-      '<span class="rank">' + (p.team || 'FA') + '</span></li>').join('');
-    if ((b.ranked || []).length > 12) {
-      listEl.innerHTML += '<li><span class="no"></span><span class="pos"></span>' +
-        '<span class="muted">… ' + ((b.ranked || []).length - 12) + ' more</span></li>';
-    }
-    if (b.board_error) rowsEl.textContent = b.board_error;
+    renderBoard(b);
+    note.textContent = b.board_error || '';
   } catch (err) {
-    colsEl.textContent = '';
+    note.textContent = 'board unavailable';
   }
 }
 

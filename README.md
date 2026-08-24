@@ -94,6 +94,36 @@ JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
 to the static handler.
 
+## The board
+
+The page is one grid, and it reads in two directions: **vertical position is
+rank, horizontal position is where that player plays.**
+
+Columns are the four tracked positions — QB, RB, WR, TE — ordered
+**most-needed first**. A position you are still short of this checkpoint goes
+leftmost, biggest shortfall first; once every minimum is met the weakest
+position (fewest drafted) leads instead. Defense and kicker are not on the
+board at all; see AGENTS.md.
+
+Top to bottom:
+
+| Band | What it holds |
+| ---- | ------------- |
+| Header | The position |
+| **Drafted** | Your roster at that position, first pick highest. Dimmed — there is no decision left there |
+| *solid line* | Separates what you already own from what is still available |
+| **Needs** | One dashed box per pick this checkpoint still requires. Positions with nothing outstanding get a single dotted "not required" box instead |
+| **Ranked** | The undrafted pool, best first, one player per row in their own position's column |
+
+The ranked band is as many rows as you have picks left in the current
+checkpoint — every option you could still take before it closes, rather than an
+arbitrary top ten. Past the plan's last round there is no checkpoint, so the
+needs band disappears and the board falls back to one round of players.
+
+Everything above is computed server-side and returned by `/board`. The page
+renders that order as given and never re-sorts it, so changing how players are
+ranked is a server-side change only.
+
 ## The draft plan
 
 Checkpoints and their per-position minimums live in configuration, not code.
@@ -129,8 +159,10 @@ about once a day.
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
   `config.py` reads runtime settings; `sleeper.py` is the upstream client;
-  `draft.py` turns raw picks into draft state.
+  `draft.py` turns raw picks into draft state; `plan.py` loads the draft plan;
+  `board.py` assembles the board — column order, row count, ranked pool.
 - `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
+  `script.js` polls the JSON endpoints and draws the grid.
 - `tests/` — unit tests.
 - `docs/` — long-form specs, including the draft-companion planning docs.
 - `data/` — runtime state, git-ignored; mount this.

@@ -13,71 +13,67 @@
   </header>
 
   <main>
-    <!-- Placeholder until the draft board lands. Everything below is driven by
-         the poll in script.js so the page never needs interaction. -->
-    <section id="status" class="card">
-      <h2>Service</h2>
-      <p>Status: <span id="health" class="pill pill-unknown">checking…</span></p>
-      <p class="muted">Last checked: <span id="checked">never</span></p>
-    </section>
-
-    <section class="card">
-      <h2>Checkpoint</h2>
-      <p id="cpName">—</p>
-      <p class="muted" id="cpNeeds">&nbsp;</p>
-      <p class="muted" id="cpGuidance">&nbsp;</p>
-    </section>
-
-    <section class="card">
-      <h2>Board order</h2>
-      <p class="muted">Columns run most-needed first. The grid lands next.</p>
-      <p id="boardColumns" class="counts">&nbsp;</p>
-      <p class="muted" id="boardRows">&nbsp;</p>
-      <ol id="boardRanked" class="picks"></ol>
-    </section>
-
-    <section class="card">
-      <h2>Player pool</h2>
-      <p>Loaded: <span id="players">—</span></p>
-      <p class="muted" id="positions">&nbsp;</p>
-      <p class="muted">Cache age: <span id="cacheAge">—</span></p>
-    </section>
-
-    <section class="card">
-      <h2>Choose a draft</h2>
-      <div id="draftList" class="draft-list muted">loading…</div>
-      <div class="paste">
-        <label for="draftIdInput" class="muted">Or paste a draft ID (mock drafts
-          aren't listed by Sleeper):</label>
-        <div class="paste-row">
-          <input id="draftIdInput" type="text" inputmode="numeric"
-                 placeholder="1397021212936306688" autocomplete="off">
-          <button id="draftIdOpen" type="button">Open</button>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
+    <!-- The board is the app; everything under .diagnostics is there to explain
+         the board when it looks wrong. All of it is driven by the poll in
+         script.js so the page never needs interaction. -->
+    <section class="card board">
       <div class="cardhead">
-        <h2>Draft</h2>
+        <h2>Board</h2>
+        <span class="muted" id="boardMeta">&nbsp;</span>
         <button id="refresh" type="button" class="refresh" title="Fetch now, ignoring the cache">
           Refresh
         </button>
       </div>
-      <p id="draftHeadline">—</p>
-      <p class="muted" id="draftProgress">&nbsp;</p>
-      <p class="muted" id="draftNote">&nbsp;</p>
-      <p id="myCounts" class="counts">&nbsp;</p>
-      <ol id="recentPicks" class="picks"></ol>
+      <div id="boardGrid" class="grid"></div>
+      <p class="muted" id="boardNote">&nbsp;</p>
     </section>
 
-    <section class="card">
-      <h2>Next up</h2>
-      <p class="muted">
-        The draft board is not built yet. Coming next: the draft plan as
-        config, then the plan-aware grid.
-      </p>
-    </section>
+    <div class="diagnostics">
+      <section class="card">
+        <h2>Checkpoint</h2>
+        <p id="cpName">—</p>
+        <p class="muted" id="cpNeeds">&nbsp;</p>
+        <p class="muted" id="cpGuidance">&nbsp;</p>
+      </section>
+
+      <section class="card">
+        <div class="cardhead">
+          <h2>Draft</h2>
+        </div>
+        <p id="draftHeadline">—</p>
+        <p class="muted" id="draftProgress">&nbsp;</p>
+        <p class="muted" id="draftNote">&nbsp;</p>
+        <p id="myCounts" class="counts">&nbsp;</p>
+        <ol id="recentPicks" class="picks"></ol>
+      </section>
+
+      <section class="card">
+        <h2>Choose a draft</h2>
+        <div id="draftList" class="draft-list muted">loading…</div>
+        <div class="paste">
+          <label for="draftIdInput" class="muted">Or paste a draft ID (mock drafts
+            aren't listed by Sleeper):</label>
+          <div class="paste-row">
+            <input id="draftIdInput" type="text" inputmode="numeric"
+                   placeholder="1397021212936306688" autocomplete="off">
+            <button id="draftIdOpen" type="button">Open</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Player pool</h2>
+        <p>Loaded: <span id="players">—</span></p>
+        <p class="muted" id="positions">&nbsp;</p>
+        <p class="muted">Cache age: <span id="cacheAge">—</span></p>
+      </section>
+
+      <section id="status" class="card">
+        <h2>Service</h2>
+        <p>Status: <span id="health" class="pill pill-unknown">checking…</span></p>
+        <p class="muted">Last checked: <span id="checked">never</span></p>
+      </section>
+    </div>
   </main>
 
   <script src="/ui/script.js"></script>
