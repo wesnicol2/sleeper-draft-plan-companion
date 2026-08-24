@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import draft, sleeper
+from . import draft, fantasypros, sleeper
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
@@ -73,14 +73,25 @@ def criteria_count(position: str, still_needed: dict[str, int], lean: str | None
     return int(bool(still_needed.get(position))) + int(position == lean)
 
 
-def ranked_pool(players: dict[str, Any], taken_ids: set[str], limit: int) -> list[dict[str, Any]]:
+def ranked_pool(
+    players: dict[str, Any],
+    taken_ids: set[str],
+    limit: int,
+    adp_index: dict[str, float] | None = None,
+) -> list[dict[str, Any]]:
     """The best undrafted players, ranked, one per row.
 
-    Ranked by Sleeper's `search_rank` -- the public API exposes no ADP, and
-    this is its own ordering. Players without a rank are excluded rather than
-    sorted to the end: an unranked player is one Sleeper has no opinion about,
-    and padding the board with them would crowd out real options.
+    Ranked by FantasyPros ADP where `adp_index` has an entry for a player
+    (see fantasypros.build_adp_index), falling back to Sleeper's own
+    `search_rank` otherwise -- the public API exposes no ADP of its own, and
+    a third-party key is optional, so the board must still work with neither.
+    ADP-ranked players are always placed ahead of search_rank-only players,
+    since ADP is the better signal whenever it is available. Players with
+    neither are excluded rather than sorted to the end: no source has an
+    opinion about them, and padding the board with them would crowd out real
+    options.
     """
+    adp_index = adp_index or {}
     pool = []
     for player_id, player in players.items():
         if player_id in taken_ids or not player.get("active"):
@@ -88,10 +99,16 @@ def ranked_pool(players: dict[str, Any], taken_ids: set[str], limit: int) -> lis
         position = player.get("position")
         if position not in TRACKED_POSITIONS:
             continue
-        rank = player.get("search_rank")
-        if rank is None or rank > 100000:
-            continue
-        pool.append((rank, player_id, player))
+
+        adp = adp_index.get(player_id)
+        if adp is not None:
+            sort_key = (0, adp, player_id)
+        else:
+            rank = player.get("search_rank")
+            if rank is None or rank > 100000:
+                continue
+            sort_key = (1, rank, player_id)
+        pool.append((sort_key, player_id, player))
 
     if limit < 1:
         return []
@@ -99,7 +116,7 @@ def ranked_pool(players: dict[str, Any], taken_ids: set[str], limit: int) -> lis
     pool.sort(key=lambda item: item[0])
 
     out = []
-    for index, (_rank, player_id, player) in enumerate(pool[:limit], start=1):
+    for index, (_sort_key, player_id, player) in enumerate(pool[:limit], start=1):
         out.append(
             {
                 "rank": index,
@@ -143,9 +160,22 @@ def build_board(draft_id: str, username: str | None = None, fresh: bool = False)
 
     taken = {p["player_id"] for p in draft.get_picks(draft_id, fresh=fresh) if p.get("player_id")}
 
+    # ADP is enrichment, not a dependency -- a missing key, a spent daily call
+    # budget, or a FantasyPros outage must degrade to search_rank rather than
+    # take the whole board down, so this is its own try/except independent of
+    # the player-pool one above (which *is* fatal).
+    adp_index = None
+    try:
+        raw_draft = draft.get_draft(draft_id, fresh=fresh)
+        scoring = draft.get_league_scoring(raw_draft or {})
+        adp_records, _adp_fetched_at = fantasypros.load_adp(scoring)
+        adp_index = fantasypros.build_adp_index(adp_records, players)
+    except Exception as exc:
+        state["adp_error"] = f"ADP unavailable, ranking by search_rank instead: {exc}"
+
     # Scored after ranking rather than inside it, so the two stay separable.
     lean = (checkpoint or {}).get("lean")
-    ranked = ranked_pool(players, taken, rows)
+    ranked = ranked_pool(players, taken, rows, adp_index)
     for entry in ranked:
         entry["criteria"] = criteria_count(entry["position"], needs, lean)
 
