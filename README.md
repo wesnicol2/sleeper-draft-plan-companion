@@ -47,6 +47,10 @@ keeping across restarts.
 | `DATA_DIR`             | no       | `/srv/data` | Where the Sleeper cache is written              |
 | `PLAYERS_TTL_SECONDS`  | no       | `86400`     | How long the cached player file stays usable    |
 | `HTTP_TIMEOUT_SECONDS` | no       | `30`        | Timeout for a single Sleeper request            |
+| `FANTASYPROS_API_KEY`  | no       | —           | Enables ADP-based ranking; without it the board ranks by Sleeper's `search_rank` |
+| `ADP_TTL_SECONDS`      | no       | `86400`     | How long the cached FantasyPros ADP data stays usable |
+| `FANTASYPROS_SCORING`  | no       | `PPR`       | STD/PPR/HALF fallback used only when a draft's actual league scoring can't be resolved (normally auto-detected) |
+| `FANTASYPROS_DAILY_CALL_LIMIT` | no | `40`      | Hard cap on FantasyPros calls/day, under their free-tier limit of 50 |
 | `SLEEPER_USERNAME`     | no       | —           | Your Sleeper username; used to find your draft slot |
 | `SLEEPER_DRAFT_ID`     | no       | —           | Default draft to follow. The UI picker overrides it per browser |
 | `SLEEPER_LEAGUE_ID`    | no       | —           | Reserved; not read yet                          |
@@ -120,6 +124,23 @@ checkpoint — every option you could still take before it closes, rather than a
 arbitrary top ten. Past the plan's last round there is no checkpoint, so the
 needs band disappears and the board falls back to one round of players.
 
+"Best first" means FantasyPros ADP where it's available (set
+`FANTASYPROS_API_KEY` to enable it), falling back to Sleeper's own
+`search_rank` for anyone FantasyPros doesn't cover — and for the whole board if
+no key is configured at all.
+
+**On a free FantasyPros key that means roughly the top 10 players only.** Their
+free tier caps every response at 10 rows, which today is all RB and WR, so no
+quarterback or tight end gets a real ADP and neither does anyone past about
+pick 11; the rest of the board is still `search_rank`. A paid key lifts the cap
+to the full ~669 players. The scoring format (Standard/PPR/Half) is detected
+from your league automatically, so the ADP matches how your league actually
+scores.
+
+ADP is fetched once a day, and never on a poll or the Refresh button, to stay
+well under the free tier's 50-requests/day limit; see AGENTS.md for the
+reasoning.
+
 ### Highlighting
 
 Players in the ranked band are coloured by how many of the draft plan's
@@ -178,8 +199,9 @@ about once a day.
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
   `config.py` reads runtime settings; `sleeper.py` is the upstream client;
-  `draft.py` turns raw picks into draft state; `plan.py` loads the draft plan;
-  `board.py` assembles the board — column order, row count, ranked pool.
+  `fantasypros.py` is the ADP client; `draft.py` turns raw picks into draft
+  state; `plan.py` loads the draft plan; `board.py` assembles the board —
+  column order, row count, ranked pool.
 - `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
   `script.js` polls the JSON endpoints and draws the grid.
 - `tests/` — unit tests.

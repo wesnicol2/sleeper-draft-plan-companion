@@ -7,7 +7,7 @@ is moved to the left") plus a tie-break the docs never specify.
 
 import pytest
 
-from sleeper_draft_plan_companion import board
+from sleeper_draft_plan_companion import board, draft, fantasypros, sleeper
 
 
 def test_most_needed_position_goes_leftmost():
@@ -102,6 +102,30 @@ def test_ranked_pool_with_no_room_returns_nothing(limit):
     assert board.ranked_pool(PLAYERS, taken_ids=set(), limit=limit) == []
 
 
+def test_ranked_pool_with_no_adp_index_matches_the_search_rank_only_behaviour():
+    """adp_index defaults to None, so every call site and test above this line
+    that predates ADP support keeps working unchanged."""
+    without_arg = board.ranked_pool(PLAYERS, taken_ids=set(), limit=10)
+    with_none = board.ranked_pool(PLAYERS, taken_ids=set(), limit=10, adp_index=None)
+    assert without_arg == with_none
+
+
+def test_ranked_pool_prefers_adp_over_a_conflicting_search_rank():
+    """ "Top WR" has the better search_rank (2 vs 900), but "Deep TE" is the one
+    with an ADP entry, so ADP must win the tie-break, not search_rank."""
+    adp_index = {"7": 1.0}  # "Deep TE", search_rank 900
+    out = board.ranked_pool(PLAYERS, taken_ids=set(), limit=10, adp_index=adp_index)
+    assert out[0]["name"] == "Deep TE"
+
+
+def test_ranked_pool_puts_search_rank_only_players_after_every_adp_player():
+    adp_index = {"2": 50.0}  # "Top WR" -- a deliberately bad ADP value
+    out = board.ranked_pool(PLAYERS, taken_ids={"3"}, limit=10, adp_index=adp_index)
+    names = [p["name"] for p in out]
+    assert names[0] == "Top WR", "the only ADP-ranked player leads regardless of the value"
+    assert names[1:] == ["Top RB", "Deep TE"], "search_rank order preserved among the rest"
+
+
 def test_criteria_count_scores_need_and_lean_together():
     """The top score: a position you are short of AND the checkpoint's lean."""
     assert board.criteria_count("RB", {"RB": 1}, "RB") == 2
@@ -143,3 +167,49 @@ def test_criteria_count_never_exceeds_the_advertised_maximum():
     for position in board.TRACKED_POSITIONS:
         needs = dict.fromkeys(board.TRACKED_POSITIONS, 3)
         assert board.criteria_count(position, needs, position) <= len(board.CRITERIA)
+
+
+def _fake_state():
+    return {
+        "draft_id": "d1",
+        "teams": 12,
+        "my_counts": {},
+        "checkpoint": None,
+    }
+
+
+def test_build_board_falls_back_to_search_rank_when_fantasypros_is_unavailable(monkeypatch):
+    """A dead key or a spent call budget must degrade the ranking source, not
+    blank the board -- adp_error is reported separately from board_error,
+    which means "the board itself is broken"."""
+    monkeypatch.setattr(draft, "build_state", lambda *_a, **_k: _fake_state())
+    monkeypatch.setattr(sleeper, "load_players", lambda: (PLAYERS, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [{"player_id": "3"}])
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"league_id": "l1"})
+    monkeypatch.setattr(draft, "get_league_scoring", lambda _draft: "PPR")
+
+    def fail(*_a, **_k):
+        raise fantasypros.FantasyProsUnavailable("no key configured")
+
+    monkeypatch.setattr(fantasypros, "load_adp", fail)
+
+    result = board.build_board("d1")
+
+    assert "adp_error" in result
+    assert "board_error" not in result
+    assert [p["name"] for p in result["ranked"]] == ["Top RB", "Top WR", "Deep TE"]
+
+
+def test_build_board_uses_adp_when_fantasypros_succeeds(monkeypatch):
+    monkeypatch.setattr(draft, "build_state", lambda *_a, **_k: _fake_state())
+    monkeypatch.setattr(sleeper, "load_players", lambda: (PLAYERS, 0.0))
+    monkeypatch.setattr(draft, "get_picks", lambda *_a, **_k: [{"player_id": "3"}])
+    monkeypatch.setattr(draft, "get_draft", lambda *_a, **_k: {"league_id": "l1"})
+    monkeypatch.setattr(draft, "get_league_scoring", lambda _draft: "PPR")
+    monkeypatch.setattr(fantasypros, "load_adp", lambda _scoring: ([], 0.0))
+    monkeypatch.setattr(fantasypros, "build_adp_index", lambda _records, _players: {"7": 1.0})
+
+    result = board.build_board("d1")
+
+    assert "adp_error" not in result
+    assert result["ranked"][0]["name"] == "Deep TE"

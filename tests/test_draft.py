@@ -272,3 +272,39 @@ def test_state_has_no_checkpoint_past_the_planned_rounds(monkeypatch, tmp_path):
 
 def slot_for(pick_no):
     return draft.slot_on_the_clock(pick_no, TEAMS)
+
+
+def test_league_scoring_reads_full_ppr(monkeypatch):
+    monkeypatch.setattr(draft, "_get", lambda url, ttl=None: {"scoring_settings": {"rec": 1}})
+    assert draft.get_league_scoring({"league_id": "l1"}) == "PPR"
+
+
+def test_league_scoring_reads_half_ppr(monkeypatch):
+    monkeypatch.setattr(draft, "_get", lambda url, ttl=None: {"scoring_settings": {"rec": 0.5}})
+    assert draft.get_league_scoring({"league_id": "l1"}) == "HALF"
+
+
+def test_league_scoring_reads_standard(monkeypatch):
+    monkeypatch.setattr(draft, "_get", lambda url, ttl=None: {"scoring_settings": {"rec": 0}})
+    assert draft.get_league_scoring({"league_id": "l1"}) == "STD"
+
+
+def test_league_scoring_falls_back_for_a_mock_draft(monkeypatch):
+    """Mock drafts belong to no league, so there is nothing to look up."""
+    monkeypatch.setenv("FANTASYPROS_SCORING", "HALF")
+
+    def fail_if_called(url, ttl=None):
+        raise AssertionError("a draft with no league_id must not fetch one")
+
+    monkeypatch.setattr(draft, "_get", fail_if_called)
+    assert draft.get_league_scoring({}) == "HALF"
+
+
+def test_league_scoring_falls_back_when_the_league_fetch_fails(monkeypatch):
+    monkeypatch.setenv("FANTASYPROS_SCORING", "STD")
+
+    def fail(url, ttl=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(draft, "_get", fail)
+    assert draft.get_league_scoring({"league_id": "l1"}) == "STD"
