@@ -163,6 +163,39 @@ This does not contradict "no user interaction during the draft". The button is
 an escape hatch for when you do not trust what you are seeing; the design still
 assumes you never touch it.
 
+### The grid is placed explicitly, not flowed
+
+Every cell in the board carries its own `grid-row` and `grid-column`. The
+obvious alternative -- emit cells in reading order and let CSS grid auto-flow
+place them -- breaks on the bands that span: the `DRAFTED` / `NEEDS` / `RANKED`
+gutter labels each span their whole band, and a "not required" box spans the
+needs band. Auto-flow pushes every later cell around a span, so one column
+being a row taller silently shifts everything after it. Explicit placement
+makes the layout a function of the payload rather than of emission order, and
+it is what lets blanks be rendered as real cells so the columns stay legible.
+
+The ranked band puts **one player per row**, in their own position's column.
+That is the spec's "each row will only have one player, so each row represents
+one rank of undrafted player" -- read as one row per *rank*, not one row per
+position. The mockup's geometry confirms it: its ranked boxes are staggered
+down the page at different heights per column, not aligned into rows of four.
+Worth stating because the mockup's box *labels* are inconsistent -- several
+drafted boxes carry duplicated or wrong text -- so its geometry is the source
+of truth there, not its captions.
+
+### The frontend never re-sorts
+
+`script.js` treats `/board`'s `columns` and `ranked` as opaque and already
+ordered. It does not read `search_rank`, does not re-sort, and does not score
+players. Ordering is entirely a server-side decision.
+
+This is deliberate headroom. The spec's NEXT STEPS ask for rankings that can be
+manually set or adjusted, chosen from several sources (ADP or WAR), and pulled
+from an external service for better fidelity. Every one of those changes what
+fills `ranked`, and none of them should require touching the renderer. The same
+reasoning keeps the highlighting score separate from whatever produces the
+ordering, so ranking and highlighting can change independently.
+
 ### Bye weeks need a source that isn't Sleeper
 
 Bye-week collision highlighting is in the spec, but there is no bye-week field
