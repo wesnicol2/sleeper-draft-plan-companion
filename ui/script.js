@@ -255,14 +255,23 @@ function renderBoard(b) {
 
   // Ranked band: one player per row, in their own position's column, so
   // vertical position reads as rank and horizontal as position.
+  // Colour comes from how many plan criteria the player meets, which the
+  // server scored -- clamped to the scale it advertises, so adding a criterion
+  // later widens the ramp instead of falling off the top of it.
+  const critMax = b.criteria_max || 1;
   out.push(cell(rankedStart, 1, 'gcell gutter', 'RANKED', rows));
   for (let i = 0; i < rows; i++) {
     const p = ranked[i];
     columns.forEach(q => {
-      out.push(p && p.position === q
-        ? cell(rankedStart + i, colOf(q), 'gcell gplayer granked',
-               '<span class="prank">' + esc(p.rank) + '</span>' + playerCell(p))
-        : cell(rankedStart + i, colOf(q), 'gcell gblank', ''));
+      if (!(p && p.position === q)) {
+        out.push(cell(rankedStart + i, colOf(q), 'gcell gblank', ''));
+        return;
+      }
+      const met = Math.max(0, Math.min(p.criteria || 0, critMax));
+      out.push(cell(rankedStart + i, colOf(q),
+        'gcell gplayer granked crit' + (met ? (met >= critMax ? '-full' : '-part') : '-none'),
+        '<span class="prank">' + esc(p.rank) + '</span>' + playerCell(p) +
+        (met ? '<span class="pcrit">' + met + '/' + critMax + '</span>' : '')));
     });
   }
 

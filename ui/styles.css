@@ -192,3 +192,36 @@ button.refresh:disabled { opacity: 0.5; cursor: default; }
   border: 1px dotted var(--edge); color: var(--muted);
   font-size: 0.72rem; letter-spacing: 0.04em;
 }
+
+/* Colour by how many draft plan criteria a player meets. The spec asks for
+   "different colors based on how many draft plan criteria they have", so this
+   is a ramp, not a binary: a left bar that gets brighter and a tint that gets
+   stronger. Meeting nothing is left plain -- if everything is highlighted then
+   nothing is. */
+/* .crit-none is deliberately unstyled -- it is the plain cell. */
+.crit-part {
+  border-color: #f0a020;
+  border-left: 4px solid #f0a020;
+  background: rgba(240,160,32,0.10);
+}
+.crit-full {
+  border-color: var(--ok);
+  border-left: 4px solid var(--ok);
+  background: rgba(63,185,80,0.16);
+}
+.crit-full .pname { color: #d7ffdd; }
+
+.gplayer .pcrit {
+  position: absolute; right: 0.4rem; bottom: 0.2rem;
+  font-size: 0.66rem; font-variant-numeric: tabular-nums; color: var(--muted);
+}
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 0.85rem; }
+.legend span { display: flex; align-items: center; gap: 0.35rem;
+               color: var(--muted); font-size: 0.78rem; }
+.legend i { width: 0.85rem; height: 0.85rem; border-radius: 3px;
+            border: 1px solid var(--edge); font-style: normal; }
+.legend .k-part { border-color: #f0a020; background: rgba(240,160,32,0.35); }
+.legend .k-full { border-color: var(--ok); background: rgba(63,185,80,0.45); }
+.legend .k-need { border: 2px dashed #f0a020; }
+.legend .k-non  { border: 1px dotted var(--edge); }

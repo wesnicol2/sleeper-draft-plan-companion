@@ -48,6 +48,31 @@ def order_columns(counts: dict[str, int], needs: dict[str, int]) -> list[str]:
     return sorted(TRACKED_POSITIONS, key=sort_key)
 
 
+# What "how many draft plan criteria they have" means today. The spec asks for
+# colour by criteria count but never enumerates the criteria, and the richer
+# ones it lists -- team synergy, handcuffs, bye-week collisions -- need data
+# Sleeper does not give us. These two are what the plan already knows.
+CRITERIA = (
+    "fills a position the checkpoint is still short of",
+    "matches the checkpoint's lean",
+)
+
+
+def criteria_count(position: str, still_needed: dict[str, int], lean: str | None) -> int:
+    """How many draft plan criteria a player at `position` satisfies.
+
+    Deliberately independent of whatever produced the ranking: it reads the
+    plan's own view of the roster, not the player's rank or score. That keeps
+    ranking and highlighting free to change separately, which matters because
+    the spec has pending work on both.
+
+    Drafted players are not scored. Once someone is on the roster there is no
+    decision left to inform, and highlighting them would compete with the
+    players you are actually choosing between.
+    """
+    return int(bool(still_needed.get(position))) + int(position == lean)
+
+
 def ranked_pool(players: dict[str, Any], taken_ids: set[str], limit: int) -> list[dict[str, Any]]:
     """The best undrafted players, ranked, one per row.
 
@@ -112,13 +137,21 @@ def build_board(draft_id: str, username: str | None = None, fresh: bool = False)
         state["board_error"] = f"player pool unavailable: {exc}"
         state["columns"] = order_columns(counts, needs)
         state["ranked"] = []
+        state["criteria_max"] = len(CRITERIA)
         state["rows"] = rows
         return state
 
     taken = {p["player_id"] for p in draft.get_picks(draft_id, fresh=fresh) if p.get("player_id")}
 
+    # Scored after ranking rather than inside it, so the two stay separable.
+    lean = (checkpoint or {}).get("lean")
+    ranked = ranked_pool(players, taken, rows)
+    for entry in ranked:
+        entry["criteria"] = criteria_count(entry["position"], needs, lean)
+
     state["columns"] = order_columns(counts, needs)
-    state["ranked"] = ranked_pool(players, taken, rows)
+    state["ranked"] = ranked
+    state["criteria_max"] = len(CRITERIA)
     state["rows"] = rows
     state["plan_last_round"] = plan_module.last_planned_round(plan_module.load_plan())
     return state
