@@ -120,6 +120,25 @@ checkpoint — every option you could still take before it closes, rather than a
 arbitrary top ten. Past the plan's last round there is no checkpoint, so the
 needs band disappears and the board falls back to one round of players.
 
+### Highlighting
+
+Players in the ranked band are coloured by how many of the draft plan's
+criteria they meet:
+
+| Criteria met | Looks like |
+| ------------ | ---------- |
+| All of them | Green bar and tint |
+| Some | Amber bar and tint |
+| None | Plain — if everything is highlighted, nothing is |
+
+Two criteria count today: the player fills a position this checkpoint is still
+short of, and the player matches the checkpoint's lean. The richer ones in the
+spec — team synergy, handcuffs, bye-week collisions — need data Sleeper does
+not return; see AGENTS.md. `/board` reports the current scale as
+`criteria_max`, and each ranked player carries their own `criteria` count.
+
+Already-drafted players are never highlighted. There is no decision left there.
+
 Everything above is computed server-side and returned by `/board`. The page
 renders that order as given and never re-sorts it, so changing how players are
 ranked is a server-side change only.

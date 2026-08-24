@@ -100,3 +100,46 @@ def test_ranked_pool_carries_what_a_cell_needs():
 @pytest.mark.parametrize("limit", [0, -1])
 def test_ranked_pool_with_no_room_returns_nothing(limit):
     assert board.ranked_pool(PLAYERS, taken_ids=set(), limit=limit) == []
+
+
+def test_criteria_count_scores_need_and_lean_together():
+    """The top score: a position you are short of AND the checkpoint's lean."""
+    assert board.criteria_count("RB", {"RB": 1}, "RB") == 2
+
+
+@pytest.mark.parametrize(
+    ("position", "needs", "lean"),
+    [
+        ("RB", {"RB": 1}, None),  # needed, no lean set
+        ("RB", {"RB": 2}, "WR"),  # needed, leans elsewhere
+        ("RB", {}, "RB"),  # not needed, but the lean
+        ("RB", {"WR": 1}, "RB"),  # someone else is needed; this is the lean
+    ],
+)
+def test_criteria_count_scores_one_for_either_criterion_alone(position, needs, lean):
+    assert board.criteria_count(position, needs, lean) == 1
+
+
+def test_criteria_count_scores_zero_when_neither_applies():
+    assert board.criteria_count("QB", {"RB": 1}, "RB") == 0
+
+
+def test_criteria_count_ignores_a_satisfied_minimum():
+    """`still_needed` carries only outstanding shortfalls, but a zero must not
+    score -- a position whose minimum is met is not a need."""
+    assert board.criteria_count("RB", {"RB": 0}, None) == 0
+
+
+def test_criteria_count_with_no_checkpoint_scores_nothing():
+    """Past the plan's last round there are no rules, so nothing is highlighted
+    rather than everything being highlighted equally."""
+    for position in board.TRACKED_POSITIONS:
+        assert board.criteria_count(position, {}, None) == 0
+
+
+def test_criteria_count_never_exceeds_the_advertised_maximum():
+    """The UI colours by criteria/criteria_max, so a score above the maximum
+    would silently fall off the top of the scale."""
+    for position in board.TRACKED_POSITIONS:
+        needs = dict.fromkeys(board.TRACKED_POSITIONS, 3)
+        assert board.criteria_count(position, needs, position) <= len(board.CRITERIA)

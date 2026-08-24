@@ -183,6 +183,29 @@ Worth stating because the mockup's box *labels* are inconsistent -- several
 drafted boxes carry duplicated or wrong text -- so its geometry is the source
 of truth there, not its captions.
 
+### "How many draft plan criteria" means two things so far
+
+The MVP is defined as a board where "players should be highlighted with
+different colors based on how many draft plan criteria they have". The spec
+never says what a criterion *is*, and the ones it does list elsewhere -- team
+synergy, RB handcuffs, bye-week collisions, new coach or new QB -- all need
+data Sleeper does not return. Bye weeks are not in the player payload at all.
+
+So `board.CRITERIA` starts with the two the plan already knows: the player
+fills a position the checkpoint is still short of, and the player matches the
+checkpoint's `lean`. That gives a real 0/1/2 ramp today rather than a binary,
+and the remaining criteria drop into the same tuple when their data source
+exists.
+
+`criteria_max` is in the payload for exactly that reason. The UI colours by
+`criteria / criteria_max`, so adding a third criterion widens the ramp instead
+of scoring off the top of a hardcoded scale.
+
+Drafted players are not scored. Once someone is on your roster there is no
+decision left to inform, and colouring them would compete for attention with
+the players you are actually choosing between. Meeting zero criteria is left
+plain for the same reason -- if everything is highlighted, nothing is.
+
 ### The frontend never re-sorts
 
 `script.js` treats `/board`'s `columns` and `ranked` as opaque and already
