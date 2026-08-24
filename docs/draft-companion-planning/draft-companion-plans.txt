@@ -24,6 +24,18 @@ NEXT STEPS:
 - find some way to define value above replacement in the draft to highlight when a player is the last option before a drop off or something
 
 
+- Player notes / snippets
+    - When I hear something about a player (podcast, beat writer, injury chatter), log it against that player
+    - A player with notes shows an icon on their card so it is obvious at a glance which players I have intel on
+    - Clicking the icon opens that player's notes
+    - Notes persist across sessions and are mine, not shared
+    - Open questions to settle before building:
+        - Are notes free text only, or also tagged (injury / role / coaching / sleeper)?
+        - Can a note be added mid-draft, or is logging a pre-draft activity only?
+          (the app is otherwise strictly no-interaction during a draft)
+        - Do notes affect ranking or highlighting at all, or are they purely informational?
+
+
 STRETCH GOALS: 
     - Show season long curve comparison between top 5 players or so based on season long props from odds api (stretch goal)
     - calculate predicted Wins Above Replacement (WAR) for every player and rank based on that

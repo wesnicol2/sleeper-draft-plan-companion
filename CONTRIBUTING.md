@@ -72,6 +72,34 @@ Naming: `feature/kebab-case-name`, `dev/kebab-case-name`. No other prefixes.
    publishes `:latest` and auto-deploys to **Production**. Delete the `feature/`
    branch as soon as it is merged.
 
+## Pull request descriptions
+
+**The first thing in the description is what the reviewer should test.** Not
+what changed, not why — those come after. A reviewer opening a PR should see
+the checklist without scrolling, on a laptop, with the file list still below
+the fold.
+
+Open with a `## What to test` heading and a short bullet list. Rules for it:
+
+- **Five bullets at most.** If it needs more, the PR is too big.
+- **One line each.** Concrete action, then the expected result — "Open `:8083`,
+  hard-refresh: counts read QB 3 / RB 5 / WR 5 / TE 1". Not "verify the
+  counts are correct", which tells the reviewer nothing they didn't know.
+- **Say where.** Test URL, endpoint, or file. A reviewer should never have to
+  work out where to look.
+- **Lead with the thing most likely to be wrong**, not the easiest to check.
+- **Flag what you could not verify yourself**, explicitly. An unverified path
+  the reviewer doesn't know about is the one that breaks in production.
+
+Everything else — what changed, design decisions, what the tests cover, what
+was verified where — goes below that list, in whatever depth the change
+deserves. Long is fine down there. The rule is only about what comes first.
+
+The reason is that the reviewer's scarcest resource is the first fifteen
+seconds. A description that opens with a narrative of the implementation spends
+those seconds on the thing the reviewer can already read in the diff, and buries
+the one thing they cannot: what to actually go and look at.
+
 ## CI/CD pipeline
 
 Modular, built from widely-used marketplace actions and composed with

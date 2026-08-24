@@ -163,6 +163,42 @@ function renderCheckpoint(s) {
   guideEl.textContent = (cp.lean ? 'Lean ' + cp.lean + '. ' : '') + (cp.guidance || '');
 }
 
+async function pollBoard(fresh) {
+  const colsEl = document.getElementById('boardColumns');
+  const rowsEl = document.getElementById('boardRows');
+  const listEl = document.getElementById('boardRanked');
+  try {
+    const id = selectedDraftId();
+    const params = new URLSearchParams();
+    if (id) params.set('draft_id', id);
+    if (fresh) params.set('fresh', '1');
+    const qs = params.toString();
+    const res = await fetch('/board' + (qs ? '?' + qs : ''), { cache: 'no-store' });
+    const b = await res.json();
+    if (!res.ok || !b.configured || b.error) {
+      colsEl.textContent = ''; rowsEl.textContent = ''; listEl.innerHTML = '';
+      return;
+    }
+    colsEl.innerHTML = (b.columns || [])
+      .map((p, i) => '<span class="pos">' + (i + 1) + '.</span><span class="n">' + p + '</span>')
+      .join('  ');
+    rowsEl.textContent = (b.ranked || []).length + ' of ' + b.rows +
+      ' rows shown (rows = picks left in the checkpoint)';
+    listEl.innerHTML = (b.ranked || []).slice(0, 12).map(p =>
+      '<li><span class="no">' + p.rank + '</span>' +
+      '<span class="pos">' + (p.position || '') + '</span>' +
+      '<span>' + (p.name || '') + '</span>' +
+      '<span class="rank">' + (p.team || 'FA') + '</span></li>').join('');
+    if ((b.ranked || []).length > 12) {
+      listEl.innerHTML += '<li><span class="no"></span><span class="pos"></span>' +
+        '<span class="muted">… ' + ((b.ranked || []).length - 12) + ' more</span></li>';
+    }
+    if (b.board_error) rowsEl.textContent = b.board_error;
+  } catch (err) {
+    colsEl.textContent = '';
+  }
+}
+
 async function pollDraft(fresh) {
   const headline = document.getElementById('draftHeadline');
   const progress = document.getElementById('draftProgress');
@@ -224,6 +260,7 @@ function nextDelay() {
 async function tick(fresh) {
   poll();
   await pollDraft(fresh);
+  await pollBoard(fresh);
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = setTimeout(() => tick(false), nextDelay());
 }
