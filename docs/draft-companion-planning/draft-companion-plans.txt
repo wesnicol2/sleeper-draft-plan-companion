@@ -7,6 +7,7 @@
 Minimum viable product: A auto updating UI (no interaction needed from user) which shows top picks based on draft plan. Players should be highlighted with different colors based on how many draft plan criteria they have
 
 NEXT STEPS: 
+- Some way to see remaining players at a position even if they aren't in the next set of picks in the checkpoint. Needs more definition, but I want to avoid taking a QB in an earlier round because I don't realize other ones who are almost as good are way further down. Same applies for other positions but mainly qb and TE. Something like a "later round options". This might be directly related to WAR 
 - Simplify my choices by highlighting the following:
     - synergy with existing team
     - offensive team rank (expected points to be scored)
@@ -16,8 +17,11 @@ NEXT STEPS:
     - players with new, better teammates, 
     - starter injury possibility, 
     etc...
-
+- implement rankings so we can define an order for players. We should have rank, but rank can be manually set, adjusted, or you can pick from an array of options to rank with (adp or war) 
+- figure some way to define WAR (wins above replacement) - or just take it from rankings given? 
+- integrate with flock fantasy (or some other ranking online) for better fidelity rankings
 - Explicitly identify dropoffs/deadzones for each position - for WR it's after Jaylen Cocher
+- find some way to define value above replacement in the draft to highlight when a player is the last option before a drop off or something
 
 
 - Player notes / snippets
