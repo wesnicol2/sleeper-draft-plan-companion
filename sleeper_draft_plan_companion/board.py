@@ -103,12 +103,14 @@ def ranked_pool(
         adp = adp_index.get(player_id)
         if adp is not None:
             sort_key = (0, adp, player_id)
+            source, value = "adp", adp
         else:
             rank = player.get("search_rank")
             if rank is None or rank > 100000:
                 continue
             sort_key = (1, rank, player_id)
-        pool.append((sort_key, player_id, player))
+            source, value = "search_rank", rank
+        pool.append((sort_key, player_id, player, source, value))
 
     if limit < 1:
         return []
@@ -116,7 +118,7 @@ def ranked_pool(
     pool.sort(key=lambda item: item[0])
 
     out = []
-    for index, (_sort_key, player_id, player) in enumerate(pool[:limit], start=1):
+    for index, (_sort_key, player_id, player, source, value) in enumerate(pool[:limit], start=1):
         out.append(
             {
                 "rank": index,
@@ -126,9 +128,39 @@ def ranked_pool(
                 "position": player.get("position"),
                 "team": player.get("team"),
                 "age": player.get("age"),
+                # Why this player sits here. Carried on every row so a wrong
+                # order can be read straight off /board rather than guessed at:
+                # "search_rank 3" explains a quarterback in the top five in a
+                # way a bare row number never could.
+                "rank_source": source,
+                "rank_value": value,
             }
         )
     return out
+
+
+def adp_index_for(
+    draft_id: str, players: dict[str, Any], fresh: bool = False
+) -> tuple[dict[str, float] | None, str | None, str | None]:
+    """(adp_index, scoring, error) for a draft. None index means rank by
+    search_rank alone.
+
+    ADP is enrichment, not a dependency -- a missing key, a spent daily call
+    budget, or a FantasyPros outage degrades to search_rank rather than taking
+    the board down, so every failure is caught and returned as a message
+    instead of raised. That is deliberately unlike sleeper.load_players(),
+    which *is* fatal: no players at all means no board.
+
+    Shared by build_board and explain_rankings so the debug view cannot
+    disagree with the board it is meant to explain.
+    """
+    try:
+        raw_draft = draft.get_draft(draft_id, fresh=fresh)
+        scoring = draft.get_league_scoring(raw_draft or {})
+        adp_records, _fetched_at = fantasypros.load_adp(scoring)
+        return fantasypros.build_adp_index(adp_records, players), scoring, None
+    except Exception as exc:
+        return None, None, f"ADP unavailable, ranking by search_rank instead: {exc}"
 
 
 def build_board(draft_id: str, username: str | None = None, fresh: bool = False) -> dict[str, Any]:
@@ -160,18 +192,9 @@ def build_board(draft_id: str, username: str | None = None, fresh: bool = False)
 
     taken = {p["player_id"] for p in draft.get_picks(draft_id, fresh=fresh) if p.get("player_id")}
 
-    # ADP is enrichment, not a dependency -- a missing key, a spent daily call
-    # budget, or a FantasyPros outage must degrade to search_rank rather than
-    # take the whole board down, so this is its own try/except independent of
-    # the player-pool one above (which *is* fatal).
-    adp_index = None
-    try:
-        raw_draft = draft.get_draft(draft_id, fresh=fresh)
-        scoring = draft.get_league_scoring(raw_draft or {})
-        adp_records, _adp_fetched_at = fantasypros.load_adp(scoring)
-        adp_index = fantasypros.build_adp_index(adp_records, players)
-    except Exception as exc:
-        state["adp_error"] = f"ADP unavailable, ranking by search_rank instead: {exc}"
+    adp_index, _scoring, adp_error = adp_index_for(draft_id, players, fresh=fresh)
+    if adp_error:
+        state["adp_error"] = adp_error
 
     # Scored after ranking rather than inside it, so the two stay separable.
     lean = (checkpoint or {}).get("lean")
@@ -185,3 +208,78 @@ def build_board(draft_id: str, username: str | None = None, fresh: bool = False)
     state["rows"] = rows
     state["plan_last_round"] = plan_module.last_planned_round(plan_module.load_plan())
     return state
+
+
+def explain_rankings(draft_id: str, limit: int = 40, fresh: bool = False) -> dict[str, Any]:
+    """Why the ranked pool is in the order it is, one row per player.
+
+    Exists because a wrong order is otherwise very hard to argue with. The
+    board shows a name in a slot and nothing about how it got there, so
+    "Josh Allen is too high" has no obvious next step. This prints the source
+    and the raw value behind every row, plus both candidate values side by
+    side, so the answer is visible: he is third because Sleeper's `search_rank`
+    says 3.
+
+    It calls the same ranked_pool() the board does rather than re-sorting, so
+    it cannot quietly disagree with the thing it is explaining.
+
+    `ties` is the field worth reading. `search_rank` is a coarse popularity-ish
+    ordering with heavy duplication -- three different players share rank 4 in
+    the 2026 pool -- and every tie is broken by player_id, which is arbitrary.
+    A row whose `ties` is above 1 is in that slot partly by luck.
+    """
+    # Mirrors build_state's own guard for a draft that resolves to nothing.
+    # Note this does not cover a mistyped id: Sleeper 404s those, get_draft
+    # raises, and the api layer turns that into a 503 -- same as /board does,
+    # which is the point. This is only the "answered, but empty" case.
+    raw_draft = draft.get_draft(draft_id, fresh=fresh)
+    if not raw_draft or not raw_draft.get("draft_id"):
+        return {"error": "draft_not_found", "draft_id": draft_id}
+
+    players, _fetched_at = sleeper.load_players()
+    taken = {p["player_id"] for p in draft.get_picks(draft_id, fresh=fresh) if p.get("player_id")}
+    adp_index, scoring, adp_error = adp_index_for(draft_id, players, fresh=fresh)
+
+    ranked = ranked_pool(players, taken, limit, adp_index)
+
+    # How many players share each (source, value) pair, so an arbitrary
+    # tie-break is visible rather than implied.
+    counts_by_value: dict[tuple[str, Any], int] = {}
+    for entry in ranked:
+        key = (entry["rank_source"], entry["rank_value"])
+        counts_by_value[key] = counts_by_value.get(key, 0) + 1
+
+    rows = []
+    for entry in ranked:
+        player = players.get(entry["player_id"]) or {}
+        rows.append(
+            {
+                "rank": entry["rank"],
+                "name": entry["name"],
+                "position": entry["position"],
+                "team": entry["team"],
+                "rank_source": entry["rank_source"],
+                "rank_value": entry["rank_value"],
+                # Both candidates, whichever won, so the two can be compared
+                # directly on one line.
+                "adp": (adp_index or {}).get(entry["player_id"]),
+                "search_rank": player.get("search_rank"),
+                "ties": counts_by_value[(entry["rank_source"], entry["rank_value"])],
+            }
+        )
+
+    from_adp = sum(1 for r in rows if r["rank_source"] == "adp")
+    return {
+        "draft_id": draft_id,
+        "scoring": scoring,
+        "adp_error": adp_error,
+        "adp_players_matched": len(adp_index or {}),
+        "shown": len(rows),
+        "ranked_by": {"adp": from_adp, "search_rank": len(rows) - from_adp},
+        "note": (
+            "rank_source says which value decided the row. Ties above 1 mean the "
+            "slot was settled by an arbitrary player_id tie-break, not by the "
+            "ranking source."
+        ),
+        "rows": rows,
+    }

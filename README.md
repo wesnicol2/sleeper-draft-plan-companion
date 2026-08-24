@@ -87,6 +87,11 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/board` — the draft board: position columns in need order, your roster, and
   the ranked undrafted pool. Takes the same `?draft_id=` and `?fresh=1` as
   `/draft-state`.
+- `/rankings` — why the ranked pool is in the order it is: the source
+  (`adp` or `search_rank`) and raw value behind every row, both candidate
+  values side by side, and how many players share each value. Takes
+  `?draft_id=`, `?limit=` (default 40) and `?fresh=1`. Read this when the board
+  looks wrong; see "Debugging the order" below.
 - `/plan` — the active draft plan: checkpoints, per-position minimums, and
   which file it came from.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks
@@ -140,6 +145,35 @@ scores.
 ADP is fetched once a day, and never on a poll or the Refresh button, to stay
 well under the free tier's 50-requests/day limit; see AGENTS.md for the
 reasoning.
+
+### Debugging the order
+
+When a player looks wrong — a quarterback in the top five, say — `/rankings`
+answers why. Every row carries the source that decided it and the raw value,
+so the explanation is on the page:
+
+```
+curl -s 'localhost:8082/rankings?limit=8' | python3 -m json.tool
+```
+
+```
+  # name                  pos  src           val   ties
+  1 Bijan Robinson        RB   search_rank     1      1
+  2 Jahmyr Gibbs          RB   search_rank     2      1
+  3 Josh Allen            QB   search_rank     3      1
+  4 Jonathan Taylor       RB   search_rank     4      3
+  5 Ja'Marr Chase         WR   search_rank     4      3
+  6 Puka Nacua            WR   search_rank     4      3
+```
+
+Two things to read here. **Josh Allen is third because Sleeper's `search_rank`
+is literally 3** — that field is closer to search popularity than to draft
+position, which is exactly why ADP is worth having. And **`ties: 3` means three
+players share that value**, so their order between themselves was settled by an
+arbitrary tie-break, not by any ranking.
+
+`rank_source` and `rank_value` are on every `/board` row too, so you don't need
+a second request to see which source is in play.
 
 ### Highlighting
 
