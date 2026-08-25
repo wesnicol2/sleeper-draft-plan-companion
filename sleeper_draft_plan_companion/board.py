@@ -242,6 +242,7 @@ def build_board(
         current_pick,
         state.get("my_next_pick_no"),
         needs,
+        [entry["player_id"] for entry in ranked],
     )
     state["decision_rules"] = decision.decision_rules()
     state["columns"] = order_columns(
