@@ -11,17 +11,31 @@ function decisionDraftId() {
   try { return localStorage.getItem('draftId') || ''; } catch (e) { return ''; }
 }
 
-function recommendationClass(value) {
-  if (value === 'Draft now') return 'draft-now';
-  if (value === 'Consider now') return 'consider-now';
-  if (value === 'Can wait') return 'can-wait';
-  return 'unavailable';
+function playerName(player) {
+  if (!player) return '—';
+  return decisionEsc(player.name) + (player.team ? ' <span class="decision-team">' +
+    decisionEsc(player.team) + '</span>' : '');
 }
 
-function playerLine(player) {
-  if (!player) return '—';
-  return decisionEsc(player.name) + ' <span class="decision-adp">ADP ' +
-    decisionEsc(player.adp_rank) + '</span>';
+function adpValue(player) {
+  if (!player || player.adp_rank == null) return '—';
+  return decisionEsc(player.adp_rank);
+}
+
+function fallbackCell(candidate) {
+  const fallback = candidate.fallback;
+  if (!fallback) return '<span class="decision-none">No projected fallback</span>';
+  if (fallback.player_id === candidate.player_id) {
+    return '<span class="decision-same">Same player projected to remain</span>';
+  }
+  return playerName(fallback) + ' <span class="decision-adp">ADP ' +
+    adpValue(fallback) + '</span>';
+}
+
+function lossCell(candidate) {
+  if (candidate.adp_loss_if_waiting == null) return '—';
+  return '<strong class="decision-loss">+' +
+    decisionEsc(candidate.adp_loss_if_waiting) + '</strong>';
 }
 
 function renderDecisionContext(board) {
@@ -30,19 +44,12 @@ function renderDecisionContext(board) {
   const rows = board.decision_context || [];
 
   if (!rows.length) {
-    box.innerHTML = '<p class="muted">Decision context unavailable.</p>';
+    box.innerHTML = '<p class="muted">Cost-of-waiting context unavailable.</p>';
     rules.textContent = board.board_error || board.adp_error || '';
     return;
   }
 
   box.innerHTML = rows.map(row => {
-    const recommendation = row.recommendation || 'ADP unavailable';
-    const changedByNeed = row.base_recommendation &&
-      row.base_recommendation !== row.recommendation;
-    const later = row.later
-      ? playerLine(row.later)
-      : '<span class="decision-none">No plausible later option</span>';
-    const gap = row.adp_drop == null ? '—' : '+' + row.adp_drop + ' ADP';
     const timing = row.next_pick == null
       ? 'Next pick unavailable'
       : 'Next pick ' + row.next_pick +
@@ -50,31 +57,44 @@ function renderDecisionContext(board) {
     const need = row.checkpoint_need > 0
       ? '<span class="decision-need">Checkpoint need: ' + row.checkpoint_need + '</span>'
       : '<span class="muted">Checkpoint need: none</span>';
-    const influence = changedByNeed
-      ? '<div class="decision-influence">Opportunity cost alone: ' +
-        decisionEsc(row.base_recommendation) + ' → checkpoint need raises urgency one level</div>'
-      : '';
+    const fallback = row.next_pick_fallback
+      ? playerName(row.next_pick_fallback) + ' <span class="decision-adp">ADP ' +
+        adpValue(row.next_pick_fallback) + '</span>'
+      : '<span class="decision-none">none projected</span>';
+    const candidates = row.candidates || [];
+
+    const candidateRows = candidates.length
+      ? candidates.map(candidate => {
+          const best = candidate.is_best_now
+            ? '<span class="decision-best">BEST NOW</span>'
+            : '';
+          const cls = candidate.is_best_now ? ' decision-candidate-best' : '';
+          return '<tr class="decision-candidate' + cls + '">' +
+            '<td>' + best + playerName(candidate) + '</td>' +
+            '<td class="decision-number">' + adpValue(candidate) + '</td>' +
+            '<td>' + fallbackCell(candidate) + '</td>' +
+            '<td class="decision-number">' + lossCell(candidate) + '</td>' +
+            '</tr>';
+        }).join('')
+      : '<tr><td colspan="4" class="muted">No displayed candidates at this position.</td></tr>';
 
     return '<article class="decision-item">' +
       '<div class="decision-head"><strong>' + decisionEsc(row.position) + '</strong>' +
-      '<span class="decision-rec ' + recommendationClass(row.recommendation) + '">' +
-      decisionEsc(recommendation) + '</span></div>' +
-      '<div class="decision-line"><span>Now</span><span>' + playerLine(row.current) + '</span></div>' +
-      '<div class="decision-line"><span>Wait</span><span>' + later + '</span></div>' +
-      '<div class="decision-line"><span>Drop</span><span>' + decisionEsc(gap) + '</span></div>' +
-      '<div class="decision-timing muted">' + decisionEsc(timing) + '</div>' +
+      '<span class="decision-timing muted">' + decisionEsc(timing) + '</span></div>' +
+      '<div class="decision-summary"><span>Next-pick fallback</span><span>' + fallback + '</span></div>' +
       '<div class="decision-context-row">' + need + '</div>' +
-      influence +
+      '<div class="decision-table-wrap"><table class="decision-table">' +
+      '<thead><tr><th>Candidate</th><th>ADP</th><th>If you wait</th><th>ADP loss</th></tr></thead>' +
+      '<tbody>' + candidateRows + '</tbody></table></div>' +
       '<div class="decision-reason muted">' + decisionEsc(row.reason || '') + '</div>' +
       '</article>';
   }).join('');
 
   const r = board.decision_rules || {};
   rules.textContent = r.availability_rule
-    ? 'Likely at next pick: ' + r.availability_rule + '. ' +
-      'Can wait: drop ≤ ' + r.can_wait_max_drop + '; consider now: drop ≥ ' +
-      r.consider_now_min_drop + '; draft now: drop ≥ ' + r.draft_now_min_drop + '. '
-      + r.checkpoint_influence + '.'
+    ? 'Fallback rule: ' + r.availability_rule + '. ' +
+      'ADP loss if waiting = ' + r.cost_metric + '. ' +
+      r.cost_note + ' ' + r.checkpoint_influence + '.'
     : '';
 }
 
@@ -88,12 +108,12 @@ async function pollDecisionContext() {
     const res = await fetch('/board' + (qs ? '?' + qs : ''), { cache: 'no-store' });
     const board = await res.json();
     if (!res.ok || !board.configured || board.error) {
-      box.innerHTML = '<p class="muted">Decision context unavailable.</p>';
+      box.innerHTML = '<p class="muted">Cost-of-waiting context unavailable.</p>';
       return;
     }
     renderDecisionContext(board);
   } catch (err) {
-    box.innerHTML = '<p class="muted">Decision context unavailable.</p>';
+    box.innerHTML = '<p class="muted">Cost-of-waiting context unavailable.</p>';
   }
 }
 
