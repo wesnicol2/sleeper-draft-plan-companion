@@ -7,6 +7,8 @@
 Minimum viable product: A auto updating UI (no interaction needed from user) which shows top picks based on draft plan. Players should be highlighted with different colors based on how many draft plan criteria they have
 
 NEXT STEPS: 
+- Assign position strength based on players drafted. This should work with the positional needs to determin which position is most needed. If we already have round 1 and 2 rbs, we probably don't need many more. Positions should shoot for strength rather than number of players. 
+    - Round 1 draftee would have the most weight, round 2 less, all the way to 15 on an inverse exponential curve x^-2 (in the future, strengthen this with WAR of each individual player rather than inverse exponential x^-2)
 - Some way to see remaining players at a position even if they aren't in the next set of picks in the checkpoint. Needs more definition, but I want to avoid taking a QB in an earlier round because I don't realize other ones who are almost as good are way further down. Same applies for other positions but mainly qb and TE. Something like a "later round options". This might be directly related to WAR 
 - Simplify my choices by highlighting the following:
     - synergy with existing team
