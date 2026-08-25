@@ -73,9 +73,7 @@ def build_decision_context(
                 None,
             )
 
-        chosen_candidates = [
-            item for item in available if item[1] in candidate_order
-        ]
+        chosen_candidates = [item for item in available if item[1] in candidate_order]
         chosen_candidates.sort(key=lambda item: candidate_order[item[1]])
 
         # Always expose the best static-ADP option for the position even if the
