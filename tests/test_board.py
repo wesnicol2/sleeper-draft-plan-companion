@@ -36,11 +36,7 @@ def test_load_adp_does_not_use_consensus_as_rank():
 
     records = adp.load_adp()
 
-    gibbs = next(
-        record
-        for record in records
-        if record["player_name"] == "Jahmyr Gibbs"
-    )
+    gibbs = next(record for record in records if record["player_name"] == "Jahmyr Gibbs")
 
     assert gibbs["rank"] == 2
     assert gibbs["consensus"] == "1.7"
