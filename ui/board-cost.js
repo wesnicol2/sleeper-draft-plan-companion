@@ -2,8 +2,8 @@
   const originalRenderBoard = renderBoard;
 
   function costText(cost) {
-    if (!cost || cost.adp_loss_if_waiting == null) return '—';
-    return '+' + cost.adp_loss_if_waiting;
+    if (!cost || cost.adp_loss_if_waiting == null) return 'ADP —';
+    return 'ADP +' + cost.adp_loss_if_waiting;
   }
 
   function ordinalLabel(ordinal) {
@@ -12,16 +12,16 @@
 
   function fallbackSummary(player, cost, rankById) {
     if (!cost || !cost.fallback) {
-      return 'Wait ' + ordinalLabel(cost && cost.ordinal) + ' → no projected fallback';
+      return ordinalLabel(cost && cost.ordinal) + ' → no projected fallback';
     }
     const fallback = cost.fallback;
     const fallbackRank = rankById.get(fallback.player_id);
     const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
     const distanceText = distance == null
       ? 'beyond shown 32'
-      : (distance === 0 ? 'same player' : '↓' + distance + ' board spots');
-    return 'Wait ' + ordinalLabel(cost.ordinal) + ' → ' + fallback.name +
-      ' · ' + distanceText + ' · ADP ' + costText(cost);
+      : (distance === 0 ? 'same player' : '↓' + distance + ' spots');
+    return ordinalLabel(cost.ordinal) + ' → ' + fallback.name +
+      ' · ' + distanceText + ' · ' + costText(cost);
   }
 
   function addFallbackRail(grid, anchorCell, fallbackCell, ordinal) {
@@ -45,7 +45,7 @@
     const metaLabel = document.getElementById('boardMeta');
     const checkpoint = board.checkpoint;
     metaLabel.textContent = (checkpoint ? checkpoint.name + ' · ' : '') +
-      'showing next ' + ranked.length + ' available';
+      'next ' + ranked.length + ' available';
 
     const rankById = new Map(ranked.map((player) => [player.player_id, player.rank]));
     const cellById = new Map();
@@ -57,30 +57,17 @@
 
     cells.forEach((cell, index) => {
       const player = ranked[index];
-      if (!player) return;
+      if (!player || !player.is_best_now) return;
 
-      if (player.is_best_now) {
-        const badge = document.createElement('span');
-        badge.className = 'board-best-now';
-        badge.textContent = 'BEST ' + player.position;
-        cell.appendChild(badge);
-      }
+      const badge = document.createElement('span');
+      badge.className = 'board-best-now';
+      badge.textContent = 'BEST ' + player.position;
+      cell.appendChild(badge);
 
       const costs = (player.wait_costs || []).slice(0, 2).map((cost, costIndex) => ({
         ...cost,
         ordinal: costIndex + 1,
       }));
-      const meta = document.createElement('span');
-      meta.className = 'board-wait-cost';
-      const adp = player.adp == null ? 'ADP —' : 'ADP ' + player.adp;
-      const bits = [adp];
-      costs.forEach((cost) => {
-        bits.push('P' + cost.pick_no + ' Δ' + costText(cost));
-      });
-      meta.textContent = bits.join(' · ');
-      cell.appendChild(meta);
-
-      if (!player.is_best_now) return;
 
       costs.forEach((cost) => {
         const summary = document.createElement('span');
