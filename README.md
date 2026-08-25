@@ -1,5 +1,8 @@
 # sleeper-draft-plan-companion
 
+TODO: FANTASY PROS API USAGE IS DECOMISSIONED. STATIC ADP FILE IS NOW BEING USED. UPADTE README WHEN POSSIBLE
+
+
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft as it happens, compares it against your draft plan, and continuously
 shows which players you should be considering right now — so you glance at a
