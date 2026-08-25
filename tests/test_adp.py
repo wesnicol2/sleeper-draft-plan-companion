@@ -180,4 +180,3 @@ def test_build_adp_index_skips_unmatched_players():
     }
 
     assert adp.build_adp_index(records, players) == {}
-    

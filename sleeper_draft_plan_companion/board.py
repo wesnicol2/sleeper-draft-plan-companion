@@ -1,188 +1,251 @@
-"""Static ADP data from resources/adp.csv.
-
-The CSV's `id` column is the canonical overall rank. The individual
-Sleeper/ESPN/FantasyPros columns are retained as source metadata but are not
-used to recompute the ordering.
-
-The CSV has a handful of player names split across physical lines because they
-were copied from a rendered table. `_read_rows()` repairs those rows.
-"""
+"""Board assembly: columns, ranked players, and plan highlighting."""
 
 from __future__ import annotations
 
-import csv
-import re
-from pathlib import Path
 from typing import Any
-from . import draft, sleeper
+
+from . import adp, draft, sleeper
+from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
-CSV_PATH = Path(__file__).resolve().parent.parent / "resources" / "adp.csv"
+TIE_BREAK_ORDER = ("RB", "WR", "TE", "QB")
 
-_SUFFIXES = re.compile(r"\b(jr|sr|ii|iii|iv|v)\.?$")
-_PUNCTUATION = re.compile(r"[^a-z0-9 ]")
-
-_MEMO: list[dict[str, Any]] | None = None
-
-
-def _normalize_name(name: str) -> str:
-    """Normalize names enough to match ordinary Sleeper/CSV differences."""
-    normalized = name.lower().strip()
-    normalized = _PUNCTUATION.sub("", normalized)
-    normalized = _SUFFIXES.sub("", normalized).strip()
-    return re.sub(r"\s+", " ", normalized)
+CRITERIA = (
+    "fills a position the checkpoint is still short of",
+    "matches the checkpoint's lean",
+)
 
 
-def _read_rows() -> list[list[str]]:
-    """Read the CSV and repair names split across physical lines.
+def order_columns(
+    counts: dict[str, int],
+    needs: dict[str, int],
+) -> list[str]:
+    """Put positions still short first, largest shortfall first."""
 
-    For example, the source contains:
+    def sort_key(position: str) -> tuple[int, int, int]:
+        shortfall = needs.get(position, 0)
 
-        42,RB,CS
-        Cam Skattebo,NYG,...
+        if shortfall > 0:
+            return (
+                0,
+                -shortfall,
+                TIE_BREAK_ORDER.index(position),
+            )
 
-    The intended player name is ``Cam Skattebo``. The ``CS`` prefix is an
-    artifact of the source table and is discarded.
-    """
-    with CSV_PATH.open(newline="", encoding="utf-8") as handle:
-        raw = list(csv.reader(handle))
-
-    if not raw:
-        raise ValueError(f"ADP CSV is empty: {CSV_PATH}")
-
-    rows: list[list[str]] = [raw[0]]
-
-    for row in raw[1:]:
-        if row and row[0].strip().isdigit():
-            rows.append(row)
-            continue
-
-        if not rows or len(rows[-1]) < 3:
-            raise ValueError(f"Malformed ADP CSV row: {row!r}")
-
-        if not row:
-            raise ValueError(f"Malformed ADP CSV row: {row!r}")
-
-        # The previous row contains the rank/position and an abbreviated
-        # prefix in the Player field. The continuation row contains the real
-        # player name followed by the remaining CSV fields.
-        rows[-1][2] = row[0].strip()
-        rows[-1].extend(row[1:])
-
-    return rows
-
-
-def load_adp() -> list[dict[str, Any]]:
-    """Return all tracked ADP rows ordered by the CSV's `id`."""
-    global _MEMO
-
-    if _MEMO is not None:
-        return _MEMO
-
-    rows = _read_rows()
-
-    expected_header = [
-        "id",
-        "Position",
-        "Player",
-        "Team",
-        "Consensus",
-        "Sleeper",
-        "ESPN",
-        "FantasyPros",
-    ]
-
-    if rows[0] != expected_header:
-        raise ValueError(f"Unexpected ADP CSV header: {rows[0]!r}")
-
-    records: list[dict[str, Any]] = []
-
-    for row in rows[1:]:
-        if len(row) != len(expected_header):
-            raise ValueError(f"Malformed ADP CSV row: {row!r}")
-
-        try:
-            rank = int(row[0])
-        except ValueError as exc:
-            raise ValueError(f"Invalid ADP rank: {row[0]!r}") from exc
-
-        position = row[1].strip()
-        player_name = row[2].strip()
-
-        if position not in TRACKED_POSITIONS or not player_name:
-            continue
-
-        records.append(
-            {
-                "rank": rank,
-                "position": position,
-                "player_name": player_name,
-                "team": row[3].strip() or None,
-                "consensus": row[4].strip(),
-                "sleeper": row[5].strip(),
-                "espn": row[6].strip(),
-                "fantasypros": row[7].strip(),
-            }
+        return (
+            1,
+            counts.get(position, 0),
+            TIE_BREAK_ORDER.index(position),
         )
 
-    records.sort(key=lambda record: record["rank"])
+    return sorted(
+        TRACKED_POSITIONS,
+        key=sort_key,
+    )
 
-    _MEMO = records
-    return records
+
+def criteria_count(
+    position: str,
+    still_needed: dict[str, int],
+    lean: str | None,
+) -> int:
+    """Return how many draft-plan criteria a position satisfies."""
+    return int(bool(still_needed.get(position))) + int(position == lean)
 
 
-def build_adp_index(
-    adp_records: list[dict[str, Any]],
+def ranked_pool(
     players: dict[str, Any],
-) -> dict[str, int]:
-    """Map Sleeper player IDs to the CSV's canonical rank.
+    taken_ids: set[str],
+    limit: int,
+    adp_index: dict[str, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Return the best undrafted players.
 
-    The CSV does not contain Sleeper IDs, so matching uses normalized name and
-    position. Team is used to resolve otherwise ambiguous matches.
-
-    Players that cannot be matched uniquely are deliberately left out. The
-    board then falls back to Sleeper's search_rank for those players.
+    Static CSV ADP is authoritative when a player is matched. Sleeper
+    search_rank is used only as a fallback for players without a CSV match.
     """
-    by_name_position: dict[tuple[str, str], list[str]] = {}
+    if limit < 1:
+        return []
+
+    adp_index = adp_index or {}
+    pool = []
 
     for player_id, player in players.items():
+        if player_id in taken_ids or not player.get("active"):
+            continue
+
         position = player.get("position")
 
         if position not in TRACKED_POSITIONS:
             continue
 
-        name = (
-            player.get("full_name")
-            or f"{player.get('first_name', '')} {player.get('last_name', '')}"
-        ).strip()
+        adp_rank = adp_index.get(player_id)
 
-        key = (_normalize_name(name), position)
-        by_name_position.setdefault(key, []).append(player_id)
+        if adp_rank is not None:
+            sort_key = (0, adp_rank, player_id)
+            source = "adp"
+            value = adp_rank
+        else:
+            search_rank = player.get("search_rank")
 
-    index: dict[str, int] = {}
+            if search_rank is None or search_rank > 100000:
+                continue
 
-    for record in adp_records:
-        position = record["position"]
-        name = record["player_name"]
+            sort_key = (1, search_rank, player_id)
+            source = "search_rank"
+            value = search_rank
 
-        key = (_normalize_name(name), position)
-        candidates = by_name_position.get(key, [])
+        pool.append(
+            (
+                sort_key,
+                player_id,
+                player,
+                source,
+                value,
+            )
+        )
 
-        if len(candidates) == 1:
-            index[candidates[0]] = record["rank"]
-            continue
+    pool.sort(key=lambda item: item[0])
 
-        if len(candidates) > 1 and record.get("team"):
-            team_matches = [
-                player_id
-                for player_id in candidates
-                if players[player_id].get("team") == record["team"]
-            ]
+    return [
+        {
+            "rank": index,
+            "player_id": player_id,
+            "name": (
+                player.get("full_name")
+                or f"{player.get('first_name', '')} "
+                f"{player.get('last_name', '')}".strip()
+            ),
+            "position": player.get("position"),
+            "team": player.get("team"),
+            "age": player.get("age"),
+            "rank_source": source,
+            "rank_value": value,
+        }
+        for index, (
+            _sort_key,
+            player_id,
+            player,
+            source,
+            value,
+        ) in enumerate(
+            pool[:limit],
+            start=1,
+        )
+    ]
 
-            if len(team_matches) == 1:
-                index[team_matches[0]] = record["rank"]
 
-    return index
+def adp_index_for(
+    draft_id: str,
+    players: dict[str, Any],
+    fresh: bool = False,
+) -> tuple[dict[str, int], str | None, str | None]:
+    """Load the local static ADP table.
+
+    The old function signature is retained so callers do not need to know
+    that ADP is no longer fetched dynamically.
+    """
+    del draft_id, fresh
+
+    try:
+        records = adp.load_adp()
+        index = adp.build_adp_index(
+            records,
+            players,
+        )
+        return index, None, None
+    except Exception as exc:
+        return (
+            {},
+            None,
+            f"ADP unavailable, ranking by search_rank instead: {exc}",
+        )
+
+
+def build_board(
+    draft_id: str,
+    username: str | None = None,
+    fresh: bool = False,
+) -> dict[str, Any]:
+    """Everything the grid needs, in one payload."""
+    state = draft.build_state(
+        draft_id,
+        username,
+        fresh=fresh,
+    )
+
+    if state.get("error"):
+        return state
+
+    checkpoint = state.get("checkpoint")
+    counts = state.get("my_counts") or {}
+    needs = (checkpoint or {}).get("still_needed") or {}
+
+    rows = (checkpoint or {}).get("picks_left_in_checkpoint")
+
+    if not rows or rows < 1:
+        rows = state.get("teams") or 12
+
+    try:
+        players, _fetched_at = sleeper.load_players()
+    except Exception as exc:
+        state["board_error"] = f"player pool unavailable: {exc}"
+        state["columns"] = order_columns(
+            counts,
+            needs,
+        )
+        state["ranked"] = []
+        state["criteria_max"] = len(CRITERIA)
+        state["rows"] = rows
+        return state
+
+    taken = {
+        pick["player_id"]
+        for pick in draft.get_picks(
+            draft_id,
+            fresh=fresh,
+        )
+        if pick.get("player_id")
+    }
+
+    adp_index, _scoring, adp_error = adp_index_for(
+        draft_id,
+        players,
+        fresh=fresh,
+    )
+
+    if adp_error:
+        state["adp_error"] = adp_error
+
+    lean = (checkpoint or {}).get("lean")
+
+    ranked = ranked_pool(
+        players,
+        taken,
+        rows,
+        adp_index,
+    )
+
+    for entry in ranked:
+        entry["criteria"] = criteria_count(
+            entry["position"],
+            needs,
+            lean,
+        )
+
+    state["columns"] = order_columns(
+        counts,
+        needs,
+    )
+    state["ranked"] = ranked
+    state["criteria_max"] = len(CRITERIA)
+    state["rows"] = rows
+    state["plan_last_round"] = plan_module.last_planned_round(
+        plan_module.load_plan()
+    )
+
+    return state
+
 
 def explain_rankings(
     draft_id: str,
@@ -190,7 +253,10 @@ def explain_rankings(
     fresh: bool = False,
 ) -> dict[str, Any]:
     """Explain the same ordering used by the board."""
-    raw_draft = draft.get_draft(draft_id, fresh=fresh)
+    raw_draft = draft.get_draft(
+        draft_id,
+        fresh=fresh,
+    )
 
     if not raw_draft or not raw_draft.get("draft_id"):
         return {
@@ -202,7 +268,10 @@ def explain_rankings(
 
     taken = {
         pick["player_id"]
-        for pick in draft.get_picks(draft_id, fresh=fresh)
+        for pick in draft.get_picks(
+            draft_id,
+            fresh=fresh,
+        )
         if pick.get("player_id")
     }
 
@@ -275,9 +344,3 @@ def explain_rankings(
         ),
         "rows": rows,
     }
-
-
-def reset_cache() -> None:
-    """Clear the in-process CSV cache. Intended for tests."""
-    global _MEMO
-    _MEMO = None
