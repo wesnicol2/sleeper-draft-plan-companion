@@ -1,0 +1,57 @@
+.board-wait-cost {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.68rem;
+  line-height: 1.2;
+  color: var(--muted, #8f96a3);
+  white-space: normal;
+}
+
+.board-best-now {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.board-pick-marker {
+  align-self: start;
+  position: relative;
+  z-index: 6;
+  height: 0;
+  border-top: 2px solid currentColor;
+  pointer-events: none;
+}
+
+.board-pick-marker span {
+  position: absolute;
+  right: 0.35rem;
+  top: -0.78rem;
+  padding: 0 0.3rem;
+  background: var(--card, #1c2028);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .board-wait-cost {
+    font-size: 0.61rem;
+  }
+
+  .board-best-now {
+    display: block;
+    width: fit-content;
+    margin: 0.15rem 0 0;
+  }
+
+  .board-pick-marker span {
+    font-size: 0.56rem;
+  }
+}
