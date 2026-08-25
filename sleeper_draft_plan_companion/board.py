@@ -113,8 +113,7 @@ def ranked_pool(
             "player_id": player_id,
             "name": (
                 player.get("full_name")
-                or f"{player.get('first_name', '')} "
-                f"{player.get('last_name', '')}".strip()
+                or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
             ),
             "position": player.get("position"),
             "team": player.get("team"),
@@ -240,9 +239,7 @@ def build_board(
     state["ranked"] = ranked
     state["criteria_max"] = len(CRITERIA)
     state["rows"] = rows
-    state["plan_last_round"] = plan_module.last_planned_round(
-        plan_module.load_plan()
-    )
+    state["plan_last_round"] = plan_module.last_planned_round(plan_module.load_plan())
 
     return state
 
@@ -321,11 +318,7 @@ def explain_rankings(
             }
         )
 
-    from_adp = sum(
-        1
-        for row in rows
-        if row["rank_source"] == "adp"
-    )
+    from_adp = sum(1 for row in rows if row["rank_source"] == "adp")
 
     return {
         "draft_id": draft_id,
