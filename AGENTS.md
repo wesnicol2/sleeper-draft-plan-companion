@@ -37,7 +37,7 @@ The service is intentionally small:
   Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
 - `board.py` assembles the board and joins live state, ADP, and plan context.
-- `decision.py` owns Draft now vs. wait opportunity-cost logic.
+- `decision.py` owns Cost of waiting context.
 - `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
 
 The board renderer does not own ranking or recommendation logic. Server payloads
@@ -91,10 +91,10 @@ The existing ranked board can fall back to Sleeper `search_rank` for a player
 without a static-ADP match. That fallback is explicitly visible through
 `rank_source`/`rank_value` and `/rankings`.
 
-The **Draft now vs. wait model does not use that fallback**. Opportunity cost is
-specifically defined in terms of canonical static ADP, so missing ADP produces
-an explicit unavailable state. Silently mixing `search_rank` into this model
-would make its displayed ADP gap meaningless.
+The **Cost of waiting model does not use that fallback**. Its numeric comparison
+is specifically defined in terms of canonical static ADP, so a candidate with
+missing ADP gets an unavailable cost. Silently mixing `search_rank` into the
+same subtraction would make the number meaningless.
 
 ### FantasyPros is retired from the live ranking path
 
@@ -145,17 +145,18 @@ button that can knowingly return the same cached state is misleading.
 The full Sleeper player payload is large and changes slowly, so it is cached far
 more aggressively than picks.
 
-## Draft now vs. wait — MVP reasoning
+## Cost of waiting — MVP reasoning
 
-This feature is intentionally an **opportunity-cost layer**, not a master player
-score. The question is narrow:
+This feature is intentionally **decision context**, not a master player score.
+The question is narrow:
 
-> If I pass on the best available player at this position, what comparable
-> option does static ADP suggest could still be available at my next pick?
+> If I pass on this player, what same-position option does static ADP suggest I
+> could still have at my next pick, and how far down the ADP list is that option?
 
 For each QB/RB/WR/TE, `decision.build_decision_context()` receives only data the
 application already has: available players, drafted IDs, canonical static ADP,
-current overall pick, projected next user pick, and checkpoint shortfall.
+current overall pick, projected next user pick, checkpoint shortfall, and the
+candidates currently displayed by the board.
 
 ### Availability assumption
 
@@ -164,54 +165,73 @@ when:
 
 `static ADP rank >= next projected pick`
 
-This is deliberately simple. It is not a probabilistic survival model. The
-assumption is returned in `decision_rules` and displayed in the UI so later
-work can replace it without pretending the current model is more sophisticated
-than it is.
+The **position-level next-pick fallback** is the best undrafted same-position
+player satisfying that rule. This is deliberately simple. It is not a
+probabilistic survival model. The assumption is returned in `decision_rules` and
+displayed in the UI so later work can replace it without pretending the current
+model is more sophisticated than it is.
 
-If the best player currently available at a position already has ADP at or
-after the next projected pick, that same player is the later option and the
-opportunity-cost drop is zero.
+For an individual candidate:
 
-If no available same-position static-ADP player satisfies the next-pick rule,
-the model says there is no plausible later option rather than fabricating one.
+- if the candidate's own ADP is already at or after the next projected pick, the
+  candidate is its own fallback;
+- otherwise the candidate uses the position-level next-pick fallback;
+- if no such fallback exists, the cost remains unavailable rather than being
+  fabricated.
 
-### Recommendation thresholds
+The best static-ADP player currently available at each position is always added
+to the context and marked `is_best_now`, even when the global board row limit did
+not include that player. This keeps the positional anchor visible.
 
-The raw opportunity-cost recommendation is deterministic:
+### The MVP metric is ADP deterioration, not player value
 
-- ADP drop 0–4: `Can wait`
-- ADP drop 5–11: `Consider now`
-- ADP drop 12+: `Draft now`
-- no plausible later static-ADP option: `Draft now`
+For a candidate with a usable fallback:
 
-These are inspectable MVP constants, not claims of calibrated draft-win
-probability. Historical replay and richer replacement/cliff models are the
-appropriate places to validate or replace them later.
+`ADP loss if waiting = fallback ADP rank - candidate ADP rank`
 
-### Checkpoint need is a separate influence
+Example: candidate ADP 10 and fallback ADP 30 produces `+20`.
 
-An unmet checkpoint shortfall may raise urgency by **one level at most**. It does
-not replace the opportunity-cost calculation. The payload keeps all three
-fields visible:
+This number is **ordinal rank deterioration**. It is not the mathematical
+`Current Value - Future Value` from the long-term theory because static ADP rank
+is not a cardinal player-value scale and lower ranks are better. The code and UI
+must not describe `+20 ADP` as 20 units of player value lost.
 
-- `base_recommendation` — ADP opportunity cost alone;
-- `checkpoint_need` — the existing plan shortfall;
-- `recommendation` — the displayed result after the one-level influence.
+For the same reason, the MVP does not compute `(current - future) / current` as a
+scarcity percentage. Doing that with raw ordinal ranks would create a precise-
+looking percentage without a defensible value interpretation.
 
-This separation is intentional. A future model should be decomposable enough
-that the user can answer “why?”, rather than receiving an opaque score whose
-inputs cannot be recovered.
+### No urgency buckets yet
+
+An earlier implementation mapped ADP deterioration into `Can wait`, `Consider
+now`, and `Draft now` using fixed 5/12-rank thresholds and allowed checkpoint
+need to raise the bucket. That was removed before feature promotion because the
+thresholds were not empirically calibrated.
+
+The current MVP shows the numbers first. The user can compare candidate ADP,
+next-pick fallback, and ADP loss directly. Future wait-safety categories should
+only be introduced after historical replay or other evidence supports useful
+thresholds.
+
+### Checkpoint need is separate context
+
+Checkpoint shortfall remains visible beside the cost-of-waiting table but does
+not alter the candidate's ADP loss. This preserves two separate facts:
+
+1. what static ADP suggests will happen if the position is deferred;
+2. what the existing checkpoint plan says the roster still needs.
+
+A future model can combine those inputs explicitly. The MVP should not silently
+turn a roster need into a different opportunity-cost number.
 
 ### Safe degradation
 
-Missing canonical ADP at a position returns no recommendation and explains why.
-A missing projected next pick behaves the same way. The model never silently
-switches ranking source just to avoid an empty value.
+Missing canonical ADP for a displayed candidate produces no ADP-loss number for
+that candidate. A missing projected next pick behaves the same way. The model
+never silently switches ranking source just to avoid an empty value.
 
-Drafted and inactive players are excluded before current/later candidates are
-chosen. Ties are settled by player ID so result ordering is deterministic across
-polls and dictionary insertion orders.
+Drafted and inactive players are excluded before best-now/fallback candidates
+are chosen. Static-ADP ties are settled by player ID so result ordering is
+deterministic across polls and dictionary insertion orders.
 
 ### What the MVP does not attempt
 
@@ -235,18 +255,22 @@ later cells and make unrelated columns appear misaligned.
 The ranked band is one player per rank row in the player's own position column.
 The geometry, not frontend sorting, communicates cross-position order.
 
-### Highlighting and decision context are different concepts
+### Highlighting and cost context are different concepts
 
 Existing ranked-player highlighting answers how many checkpoint criteria a
-player satisfies. Draft now vs. wait answers timing/opportunity cost. They are
+player satisfies. Cost of waiting answers draft timing using static ADP. They are
 kept visually and structurally separate so a user can see both rather than
 having one unexplained color encode unrelated ideas.
 
-### No draft-time controls for decision context
+Within each cost-of-waiting position table, the static-ADP best available player
+is explicitly marked **BEST NOW**. That is a label for the positional anchor,
+not a recommendation to draft the player.
 
-The decision panel updates automatically. There are no sliders, toggles, or
-manual ranking controls in the MVP because those would require attention during
-the exact moment the app is meant to reduce cognitive load.
+### No draft-time controls for cost context
+
+The Cost of waiting panel updates automatically. There are no sliders, toggles,
+or manual ranking controls in the MVP because those would require attention
+during the exact moment the app is meant to reduce cognitive load.
 
 ## Deployment shape
 
@@ -267,6 +291,13 @@ which avoids storing home-network deployment credentials in GitHub Actions.
 - **Sleeper's public player API does not provide the canonical ADP this app
   needs.** Treating `search_rank` as ADP produces plausible-looking but
   semantically wrong output. It is only an explicitly labeled board fallback.
+- **Ordinal ADP movement is not player-value loss.** The MVP may show that
+  waiting moves a candidate from ADP 10 to an ADP-30 fallback, but it must not
+  call that 20 units of fantasy value or derive a fake scarcity percentage from
+  it.
+- **Uncalibrated urgency thresholds are worse than raw evidence.** The first
+  5/12-rank Draft-now buckets were removed in favor of displaying the underlying
+  numbers until historical validation can justify thresholds.
 - **FantasyPros ranking experiments showed that source semantics matter more
   than a green fixture suite.** Positional filtering changed returned rank
   meaning and free-tier coverage was too incomplete to be a reliable canonical
