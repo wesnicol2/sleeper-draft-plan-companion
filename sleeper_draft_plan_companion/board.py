@@ -146,8 +146,10 @@ def _infer_mock_slot(
         (
             pick
             for pick in picks
-            if str(pick.get("picked_by") or "") == user_id
-            and pick.get("draft_slot") is not None
+            if (
+                str(pick.get("picked_by") or "") == user_id
+                and pick.get("draft_slot") is not None
+            )
         ),
         None,
     )
