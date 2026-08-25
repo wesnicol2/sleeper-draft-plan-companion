@@ -6,6 +6,38 @@
     return '+' + cost.adp_loss_if_waiting;
   }
 
+  function ordinalLabel(ordinal) {
+    return ordinal === 1 ? 'NEXT' : '2ND';
+  }
+
+  function fallbackSummary(player, cost, rankById) {
+    if (!cost || !cost.fallback) {
+      return 'Wait ' + ordinalLabel(cost && cost.ordinal) + ' → no projected fallback';
+    }
+    const fallback = cost.fallback;
+    const fallbackRank = rankById.get(fallback.player_id);
+    const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
+    const distanceText = distance == null
+      ? 'beyond shown 32'
+      : (distance === 0 ? 'same player' : '↓' + distance + ' board spots');
+    return 'Wait ' + ordinalLabel(cost.ordinal) + ' → ' + fallback.name +
+      ' · ' + distanceText + ' · ADP ' + costText(cost);
+  }
+
+  function addFallbackRail(grid, anchorCell, fallbackCell, ordinal) {
+    if (!anchorCell || !fallbackCell) return;
+    const anchorRow = Number(anchorCell.style.gridRowStart);
+    const fallbackRow = Number(fallbackCell.style.gridRowStart);
+    const column = anchorCell.style.gridColumnStart;
+    if (!anchorRow || !fallbackRow || !column || fallbackRow <= anchorRow) return;
+
+    const rail = document.createElement('div');
+    rail.className = 'board-fallback-rail ordinal-' + ordinal;
+    rail.style.gridColumn = column;
+    rail.style.gridRow = anchorRow + ' / ' + (fallbackRow + 1);
+    grid.appendChild(rail);
+  }
+
   function enhanceBoard(board) {
     const grid = document.getElementById('boardGrid');
     const ranked = board.ranked || [];
@@ -14,6 +46,14 @@
     const checkpoint = board.checkpoint;
     metaLabel.textContent = (checkpoint ? checkpoint.name + ' · ' : '') +
       'showing next ' + ranked.length + ' available';
+
+    const rankById = new Map(ranked.map((player) => [player.player_id, player.rank]));
+    const cellById = new Map();
+    ranked.forEach((player, index) => {
+      if (cells[index]) cellById.set(player.player_id, cells[index]);
+    });
+
+    const fallbackTargets = new Map();
 
     cells.forEach((cell, index) => {
       const player = ranked[index];
@@ -26,16 +66,56 @@
         cell.appendChild(badge);
       }
 
-      const costs = player.wait_costs || [];
+      const costs = (player.wait_costs || []).slice(0, 2).map((cost, costIndex) => ({
+        ...cost,
+        ordinal: costIndex + 1,
+      }));
       const meta = document.createElement('span');
       meta.className = 'board-wait-cost';
       const adp = player.adp == null ? 'ADP —' : 'ADP ' + player.adp;
       const bits = [adp];
-      costs.slice(0, 2).forEach((cost) => {
+      costs.forEach((cost) => {
         bits.push('P' + cost.pick_no + ' Δ' + costText(cost));
       });
       meta.textContent = bits.join(' · ');
       cell.appendChild(meta);
+
+      if (!player.is_best_now) return;
+
+      costs.forEach((cost) => {
+        const summary = document.createElement('span');
+        summary.className = 'board-position-path ordinal-' + cost.ordinal;
+        summary.textContent = fallbackSummary(player, cost, rankById);
+        cell.appendChild(summary);
+
+        if (!cost.fallback) return;
+        const fallbackId = cost.fallback.player_id;
+        const fallbackRank = rankById.get(fallbackId);
+        const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
+        if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
+        fallbackTargets.get(fallbackId).push({
+          position: player.position,
+          ordinal: cost.ordinal,
+          distance: distance,
+        });
+
+        if (fallbackRank != null && distance > 0) {
+          addFallbackRail(grid, cell, cellById.get(fallbackId), cost.ordinal);
+        }
+      });
+    });
+
+    fallbackTargets.forEach((targets, playerId) => {
+      const cell = cellById.get(playerId);
+      if (!cell) return;
+      cell.classList.add('board-fallback-target');
+      targets.forEach((target) => {
+        const badge = document.createElement('span');
+        badge.className = 'board-fallback-badge ordinal-' + target.ordinal;
+        const distance = target.distance == null ? '>32' : '↓' + target.distance;
+        badge.textContent = target.position + ' ' + ordinalLabel(target.ordinal) + ' · ' + distance;
+        cell.appendChild(badge);
+      });
     });
 
     const markers = board.future_pick_markers || [];
