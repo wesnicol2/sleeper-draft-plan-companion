@@ -1,5 +1,8 @@
 # sleeper-draft-plan-companion
 
+TODO: FANTASY PROS API USAGE IS DECOMISSIONED. STATIC ADP FILE IS NOW BEING USED. UPADTE README WHEN POSSIBLE
+
+
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft as it happens, compares it against your draft plan, and continuously
 shows which players you should be considering right now — so you glance at a
@@ -47,6 +50,10 @@ keeping across restarts.
 | `DATA_DIR`             | no       | `/srv/data` | Where the Sleeper cache is written              |
 | `PLAYERS_TTL_SECONDS`  | no       | `86400`     | How long the cached player file stays usable    |
 | `HTTP_TIMEOUT_SECONDS` | no       | `30`        | Timeout for a single Sleeper request            |
+| `FANTASYPROS_API_KEY`  | no       | —           | Enables ADP-based ranking; without it the board ranks by Sleeper's `search_rank` |
+| `ADP_TTL_SECONDS`      | no       | `86400`     | How long the cached FantasyPros ADP data stays usable |
+| `FANTASYPROS_SCORING`  | no       | `PPR`       | STD/PPR/HALF fallback used only when a draft's actual league scoring can't be resolved (normally auto-detected) |
+| `FANTASYPROS_DAILY_CALL_LIMIT` | no | `40`      | Hard cap on FantasyPros calls/day, under their free-tier limit of 50 |
 | `SLEEPER_USERNAME`     | no       | —           | Your Sleeper username; used to find your draft slot |
 | `SLEEPER_DRAFT_ID`     | no       | —           | Default draft to follow. The UI picker overrides it per browser |
 | `SLEEPER_LEAGUE_ID`    | no       | —           | Reserved; not read yet                          |
@@ -83,6 +90,11 @@ CI runs exactly these on every push, and a red check blocks the merge.
 - `/board` — the draft board: position columns in need order, your roster, and
   the ranked undrafted pool. Takes the same `?draft_id=` and `?fresh=1` as
   `/draft-state`.
+- `/rankings` — why the ranked pool is in the order it is: the source
+  (`adp` or `search_rank`) and raw value behind every row, both candidate
+  values side by side, and how many players share each value. Takes
+  `?draft_id=`, `?limit=` (default 40) and `?fresh=1`. Read this when the board
+  looks wrong; see "Debugging the order" below.
 - `/plan` — the active draft plan: checkpoints, per-position minimums, and
   which file it came from.
 - `/draft-state` — live draft: picks made, who is on the clock, how many picks
@@ -93,6 +105,101 @@ CI runs exactly these on every push, and a red check blocks the merge.
 JSON handlers are registered in `ROUTES` in
 `sleeper_draft_plan_companion/api.py`; anything not matched there falls through
 to the static handler.
+
+## The board
+
+The page is one grid, and it reads in two directions: **vertical position is
+rank, horizontal position is where that player plays.**
+
+Columns are the four tracked positions — QB, RB, WR, TE — ordered
+**most-needed first**. A position you are still short of this checkpoint goes
+leftmost, biggest shortfall first; once every minimum is met the weakest
+position (fewest drafted) leads instead. Defense and kicker are not on the
+board at all; see AGENTS.md.
+
+Top to bottom:
+
+| Band | What it holds |
+| ---- | ------------- |
+| Header | The position |
+| **Drafted** | Your roster at that position, first pick highest. Dimmed — there is no decision left there |
+| *solid line* | Separates what you already own from what is still available |
+| **Needs** | One dashed box per pick this checkpoint still requires. Positions with nothing outstanding get a single dotted "not required" box instead |
+| **Ranked** | The undrafted pool, best first, one player per row in their own position's column |
+
+The ranked band is as many rows as you have picks left in the current
+checkpoint — every option you could still take before it closes, rather than an
+arbitrary top ten. Past the plan's last round there is no checkpoint, so the
+needs band disappears and the board falls back to one round of players.
+
+"Best first" means FantasyPros ADP where it's available (set
+`FANTASYPROS_API_KEY` to enable it), falling back to Sleeper's own
+`search_rank` for anyone FantasyPros doesn't cover — and for the whole board if
+no key is configured at all.
+
+**On a free FantasyPros key that means roughly the top 10 players only.** Their
+free tier caps every response at 10 rows, which today is all RB and WR, so no
+quarterback or tight end gets a real ADP and neither does anyone past about
+pick 11; the rest of the board is still `search_rank`. A paid key lifts the cap
+to the full ~669 players. The scoring format (Standard/PPR/Half) is detected
+from your league automatically, so the ADP matches how your league actually
+scores.
+
+ADP is fetched once a day, and never on a poll or the Refresh button, to stay
+well under the free tier's 50-requests/day limit; see AGENTS.md for the
+reasoning.
+
+### Debugging the order
+
+When a player looks wrong — a quarterback in the top five, say — `/rankings`
+answers why. Every row carries the source that decided it and the raw value,
+so the explanation is on the page:
+
+```
+curl -s 'localhost:8082/rankings?limit=8' | python3 -m json.tool
+```
+
+```
+  # name                  pos  src           val   ties
+  1 Bijan Robinson        RB   search_rank     1      1
+  2 Jahmyr Gibbs          RB   search_rank     2      1
+  3 Josh Allen            QB   search_rank     3      1
+  4 Jonathan Taylor       RB   search_rank     4      3
+  5 Ja'Marr Chase         WR   search_rank     4      3
+  6 Puka Nacua            WR   search_rank     4      3
+```
+
+Two things to read here. **Josh Allen is third because Sleeper's `search_rank`
+is literally 3** — that field is closer to search popularity than to draft
+position, which is exactly why ADP is worth having. And **`ties: 3` means three
+players share that value**, so their order between themselves was settled by an
+arbitrary tie-break, not by any ranking.
+
+`rank_source` and `rank_value` are on every `/board` row too, so you don't need
+a second request to see which source is in play.
+
+### Highlighting
+
+Players in the ranked band are coloured by how many of the draft plan's
+criteria they meet:
+
+| Criteria met | Looks like |
+| ------------ | ---------- |
+| All of them | Green bar and tint |
+| Some | Amber bar and tint |
+| None | Plain — if everything is highlighted, nothing is |
+
+Two criteria count today: the player fills a position this checkpoint is still
+short of, and the player matches the checkpoint's lean. The richer ones in the
+spec — team synergy, handcuffs, bye-week collisions — need data Sleeper does
+not return; see AGENTS.md. `/board` reports the current scale as
+`criteria_max`, and each ranked player carries their own `criteria` count.
+
+Already-drafted players are never highlighted. There is no decision left there.
+
+Everything above is computed server-side and returned by `/board`. The page
+renders that order as given and never re-sorts it, so changing how players are
+ranked is a server-side change only.
 
 ## The draft plan
 
@@ -129,8 +236,11 @@ about once a day.
 - `sleeper_draft_plan_companion/` — the application. `api.py` is the entrypoint (the `Dockerfile`'s
   `CMD`).
   `config.py` reads runtime settings; `sleeper.py` is the upstream client;
-  `draft.py` turns raw picks into draft state.
+  `fantasypros.py` is the ADP client; `draft.py` turns raw picks into draft
+  state; `plan.py` loads the draft plan; `board.py` assembles the board —
+  column order, row count, ranked pool.
 - `ui/` — the frontend: plain HTML, CSS and vanilla JS. No build step.
+  `script.js` polls the JSON endpoints and draws the grid.
 - `tests/` — unit tests.
 - `docs/` — long-form specs, including the draft-companion planning docs.
 - `data/` — runtime state, git-ignored; mount this.

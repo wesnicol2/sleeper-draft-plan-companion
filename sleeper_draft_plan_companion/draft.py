@@ -100,6 +100,36 @@ def list_drafts(username: str | None) -> dict[str, Any]:
     return {"drafts": out}
 
 
+def get_league_scoring(draft: dict[str, Any]) -> str:
+    """STD/PPR/HALF for the league this draft belongs to, so FantasyPros ADP can
+    be requested in the format that actually matches how the draft scores.
+
+    Mock drafts belong to no league (see AGENTS.md), so there is nothing to
+    look up; a league fetch can also simply fail. Both fall back to
+    config.fantasypros_scoring_fallback() rather than raising -- a scoring
+    format guess must never be what breaks the board.
+    """
+    league_id = draft.get("league_id")
+    if not league_id:
+        return config.fantasypros_scoring_fallback()
+
+    try:
+        # Scoring settings do not change mid-draft, so this can be cached far
+        # longer than the 1s default without ever showing stale data.
+        league = _get(f"{sleeper.BASE_URL}/league/{league_id}", ttl=3600.0)
+    except Exception:
+        return config.fantasypros_scoring_fallback()
+
+    rec = (league or {}).get("scoring_settings", {}).get("rec")
+    if rec is None:
+        return config.fantasypros_scoring_fallback()
+    if rec >= 1:
+        return "PPR"
+    if rec >= 0.5:
+        return "HALF"
+    return "STD"
+
+
 def get_picks(draft_id: str, fresh: bool = False) -> list[dict[str, Any]]:
     url = f"{sleeper.BASE_URL}/draft/{draft_id}/picks"
     return _get(url, ttl=0.0 if fresh else CACHE_TTL_SECONDS) or []

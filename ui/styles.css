@@ -26,7 +26,10 @@ h2 { margin: 0 0 0.75rem; font-size: 0.8rem; text-transform: uppercase;
      letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
 .tagline { margin: 0; color: var(--muted); }
 
-main { display: grid; gap: 1rem; max-width: 46rem; }
+/* The board wants the whole screen; the diagnostic cards below stay narrow so
+   they read as a column of notes rather than competing with the grid. */
+main { display: grid; gap: 1rem; }
+.diagnostics { display: grid; gap: 1rem; max-width: 46rem; }
 
 .card {
   background: var(--card);
@@ -116,3 +119,109 @@ button.refresh:disabled { opacity: 0.5; cursor: default; }
   border-radius: 999px; font-size: 0.82rem; color: var(--muted);
   background: rgba(139,148,158,0.12);
 }
+
+/* ---- The board grid ----
+   Columns run most-needed first (server-ordered). Vertical position in the
+   ranked band is the player's rank; horizontal is their position. */
+.board .cardhead { margin-bottom: 0.9rem; }
+.board #boardMeta { font-variant-numeric: tabular-nums; }
+
+.grid {
+  display: grid;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.gcell {
+  display: flex; flex-direction: column; justify-content: center;
+  min-height: 2.6rem; padding: 0.3rem 0.55rem;
+  border-radius: 6px; font-size: 0.86rem; line-height: 1.25;
+  overflow: hidden;
+}
+
+/* Band labels down the left, rotated so the gutter stays narrow. */
+.gutter {
+  writing-mode: vertical-rl; transform: rotate(180deg);
+  align-items: center; justify-content: center;
+  padding: 0.2rem; min-height: 0;
+  font-size: 0.62rem; letter-spacing: 0.14em; font-weight: 600;
+  color: var(--muted);
+}
+
+.ghead {
+  align-items: center; justify-content: center;
+  min-height: 2.2rem;
+  font-size: 0.95rem; font-weight: 700; letter-spacing: 0.06em;
+  background: var(--edge); color: var(--text);
+}
+
+.gblank { min-height: 2.6rem; }
+
+.gplayer { background: var(--bg); border: 1px solid var(--edge); }
+.gplayer .pname { font-weight: 600; white-space: nowrap;
+                  overflow: hidden; text-overflow: ellipsis; }
+.gplayer .pmeta { color: var(--muted); font-size: 0.74rem; }
+.gplayer .prank {
+  position: absolute; right: 0.4rem; top: 0.2rem;
+  color: var(--muted); font-size: 0.7rem; font-variant-numeric: tabular-nums;
+}
+.granked { position: relative; padding-right: 2.1rem; }
+
+/* Already on the roster: dimmed, because there is no decision left there. */
+.gdrafted { opacity: 0.62; }
+
+/* "Solid defining line between already drafted (above) and being drafted." */
+.gdivider {
+  height: 0; margin: 0.35rem 0;
+  border-top: 2px solid var(--muted);
+}
+
+/* One dashed box per outstanding pick this checkpoint still requires. */
+.gneed {
+  align-items: center; justify-content: center;
+  border: 2px dashed #f0a020; color: #f0a020;
+  background: rgba(240,160,32,0.07);
+  font-size: 0.74rem; font-weight: 600; letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The mockup's dotted box for positions this checkpoint doesn't require, or
+   whose minimum is already met. Dotted and unfilled so it reads as absence. */
+.gnonneed {
+  align-items: center; justify-content: center;
+  border: 1px dotted var(--edge); color: var(--muted);
+  font-size: 0.72rem; letter-spacing: 0.04em;
+}
+
+/* Colour by how many draft plan criteria a player meets. The spec asks for
+   "different colors based on how many draft plan criteria they have", so this
+   is a ramp, not a binary: a left bar that gets brighter and a tint that gets
+   stronger. Meeting nothing is left plain -- if everything is highlighted then
+   nothing is. */
+/* .crit-none is deliberately unstyled -- it is the plain cell. */
+.crit-part {
+  border-color: #f0a020;
+  border-left: 4px solid #f0a020;
+  background: rgba(240,160,32,0.10);
+}
+.crit-full {
+  border-color: var(--ok);
+  border-left: 4px solid var(--ok);
+  background: rgba(63,185,80,0.16);
+}
+.crit-full .pname { color: #d7ffdd; }
+
+.gplayer .pcrit {
+  position: absolute; right: 0.4rem; bottom: 0.2rem;
+  font-size: 0.66rem; font-variant-numeric: tabular-nums; color: var(--muted);
+}
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.9rem; margin-top: 0.85rem; }
+.legend span { display: flex; align-items: center; gap: 0.35rem;
+               color: var(--muted); font-size: 0.78rem; }
+.legend i { width: 0.85rem; height: 0.85rem; border-radius: 3px;
+            border: 1px solid var(--edge); font-style: normal; }
+.legend .k-part { border-color: #f0a020; background: rgba(240,160,32,0.35); }
+.legend .k-full { border-color: var(--ok); background: rgba(63,185,80,0.45); }
+.legend .k-need { border: 2px dashed #f0a020; }
+.legend .k-non  { border: 1px dotted var(--edge); }
