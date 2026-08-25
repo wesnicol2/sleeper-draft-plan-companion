@@ -2,8 +2,7 @@
   const originalRenderBoard = renderBoard;
 
   function costText(cost) {
-    if (!cost) return '—';
-    if (cost.adp_loss_if_waiting == null) return '—';
+    if (!cost || cost.adp_loss_if_waiting == null) return '—';
     return '+' + cost.adp_loss_if_waiting;
   }
 
@@ -11,6 +10,10 @@
     const grid = document.getElementById('boardGrid');
     const ranked = board.ranked || [];
     const cells = Array.from(grid.querySelectorAll('.granked'));
+    const metaLabel = document.getElementById('boardMeta');
+    const checkpoint = board.checkpoint;
+    metaLabel.textContent = (checkpoint ? checkpoint.name + ' · ' : '') +
+      'showing next ' + ranked.length + ' available';
 
     cells.forEach((cell, index) => {
       const player = ranked[index];
