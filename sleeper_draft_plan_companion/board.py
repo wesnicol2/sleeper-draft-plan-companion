@@ -232,9 +232,7 @@ def build_board(
     state["my_next_pick_no"] = future_picks[0] if future_picks else None
     current_pick = (state.get("on_the_clock") or {}).get("pick_no")
     state["picks_until_my_turn"] = (
-        future_picks[0] - current_pick
-        if future_picks and current_pick is not None
-        else None
+        future_picks[0] - current_pick if future_picks and current_pick is not None else None
     )
 
     adp_index, _scoring, adp_error = adp_index_for(draft_id, players, fresh=fresh)
