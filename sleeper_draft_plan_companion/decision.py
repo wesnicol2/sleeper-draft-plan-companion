@@ -13,8 +13,10 @@ _RECOMMENDATIONS = ("Can wait", "Consider now", "Draft now")
 def _player_view(player_id: str, player: dict[str, Any], adp_rank: int) -> dict[str, Any]:
     return {
         "player_id": player_id,
-        "name": player.get("full_name")
-        or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
+        "name": (
+            player.get("full_name")
+            or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+        ),
         "team": player.get("team"),
         "adp_rank": adp_rank,
     }
@@ -125,9 +127,13 @@ def build_decision_context(
         entry["recommendation"] = _apply_checkpoint_need(base, need)
 
         if not later_exists:
-            entry["reason"] = "No available static-ADP option is projected to last until the next pick."
+            entry["reason"] = (
+                "No available static-ADP option is projected to last until the next pick."
+            )
         elif current_rank >= next_pick:
-            entry["reason"] = "The current best option's ADP is at or after the next projected pick."
+            entry["reason"] = (
+                "The current best option's ADP is at or after the next projected pick."
+            )
         else:
             entry["reason"] = (
                 f"Static ADP drops {entry['adp_drop']} spots from the current option "
