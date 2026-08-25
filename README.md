@@ -79,8 +79,8 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/plan` — active checkpoint plan and its source.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
-- `/board` — the board plus `decision_context` and `decision_rules` for Cost of
-  waiting. Accepts `?draft_id=` and `?fresh=1`.
+- `/board` — the board plus `decision_context`, two projected user picks, and
+  `decision_rules` for Cost of waiting. Accepts `?draft_id=` and `?fresh=1`.
 - `/rankings` — debugging view showing why the ranked pool is ordered as it is.
 
 ## The board
@@ -97,7 +97,18 @@ Top to bottom:
 | **Drafted** | The user's roster at that position |
 | *solid line* | Separation between owned and available players |
 | **Needs** | Outstanding checkpoint positional minimums |
-| **Ranked** | Best undrafted players, one player per rank row |
+| **Ranked** | The next 32 best undrafted players, one player per rank row |
+
+The ranked band always shows up to **32 available players**; checkpoint length no
+longer controls that horizon. Each ranked player shows canonical ADP when
+available plus the ADP-loss result for each of the user's next two projected
+selections. The best current static-ADP player at each position is marked on the
+board.
+
+Horizontal markers show where the user's next two projected selections fall on
+the static-ADP curve. A marker is placed before the first displayed player whose
+canonical ADP is at or after that projected pick; if the boundary is beyond the
+32-player window, the marker is shown at the bottom and labeled accordingly.
 
 Static CSV ADP is authoritative for players matched to `resources/adp.csv`.
 The existing board may use Sleeper `search_rank` as a fallback for unmatched
@@ -109,29 +120,30 @@ context, not a replacement for the checkpoint board.
 
 ## Cost of waiting
 
-The compact panel beneath the main board answers: **what does static ADP suggest
-I give up if I pass this player and wait until my next projected pick?** It
-updates automatically with the live board and requires no draft-time interaction.
+The panel beneath the main board answers: **what does static ADP suggest I give
+up if I pass this player and wait until either of my next two projected picks?**
+It updates automatically with the live board and requires no draft-time
+interaction.
 
 For each tracked position it exposes:
 
 - the best available static-ADP player now, visibly marked **BEST NOW**;
-- the user's projected next selection and number of picks until it;
-- the position-level next-pick fallback;
+- the user's next two projected selections;
+- the position-level fallback at each projected pick;
 - each displayed candidate's static ADP;
-- the fallback that applies to that candidate;
+- the fallback that applies to that candidate at each projected pick;
 - **ADP loss if waiting**, calculated as fallback ADP minus candidate ADP;
 - the current checkpoint shortfall as separate context.
 
 The MVP availability assumption is deliberately simple and visible:
 
-`likely available at next pick = static ADP rank >= next projected pick`
+`likely available at projected pick = static ADP rank >= projected user pick`
 
-The next-pick fallback is the best undrafted same-position player satisfying
-that rule. If a candidate's own ADP is already at or after the projected next
-pick, that same player is its own fallback and its ADP loss if waiting is zero.
-If no same-position player satisfies the rule, the fallback and cost are shown
-as unavailable rather than invented.
+For each projected pick, the fallback is the best undrafted same-position player
+satisfying that rule. If a candidate's own ADP is already at or after that pick,
+that same player is its own fallback and its ADP loss is zero. If no
+same-position player satisfies the rule, the fallback and cost are shown as
+unavailable rather than invented.
 
 `ADP loss if waiting` is an **ordinal ADP-rank deterioration**, not a player-value
 metric. For example, a candidate at ADP 10 with a fallback at ADP 30 shows
@@ -140,8 +152,12 @@ Draft now / Consider now / Can wait verdict because those transformations have
 not yet been empirically calibrated.
 
 Checkpoint need is intentionally separate and does not alter the cost number.
-Missing static ADP or a missing projected next pick produces an explicit
+Missing static ADP or unavailable projected picks produce an explicit
 unavailable state rather than silently switching to a different ranking source.
+For real mocks where Sleeper does not expose a useful draft order, the board can
+recover the user's slot after the user has made a pick by matching Sleeper's
+`picked_by` value to that pick's `draft_slot`; before any such evidence exists,
+the explicit `SLEEPER_DRAFT_SLOT` override remains the safe fallback.
 
 This MVP does **not** implement WAR, replacement value, positional weighting,
 automatic cliffs/dead zones, roster synergy, bye-week logic, offensive
@@ -175,8 +191,8 @@ button is an escape hatch and sends `?fresh=1` for live draft state.
   - `draft.py` — live draft state and snake-pick projection.
   - `adp.py` — static ADP loading and Sleeper-player matching.
   - `plan.py` — checkpoint-plan loading.
-  - `board.py` — board assembly and decision-context integration.
-  - `decision.py` — deterministic Cost of waiting context.
+  - `board.py` — board assembly, 32-player horizon, future-pick markers, and decision-context integration.
+  - `decision.py` — deterministic two-pick Cost of waiting context.
 - `resources/adp.csv` — canonical static ADP input.
 - `ui/` — plain HTML/CSS/vanilla JS; no build step.
 - `tests/` — unit tests.
