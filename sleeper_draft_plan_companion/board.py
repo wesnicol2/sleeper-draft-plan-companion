@@ -142,17 +142,13 @@ def _infer_mock_slot(
     if not user_id:
         return
 
-    mine = next(
-        (
-            pick
-            for pick in picks
-            if (
-                str(pick.get("picked_by") or "") == user_id
-                and pick.get("draft_slot") is not None
-            )
-        ),
-        None,
-    )
+    def is_user_pick(pick: dict[str, Any]) -> bool:
+        return (
+            str(pick.get("picked_by") or "") == user_id
+            and pick.get("draft_slot") is not None
+        )
+
+    mine = next((pick for pick in picks if is_user_pick(pick)), None)
     if mine is None:
         return
 
