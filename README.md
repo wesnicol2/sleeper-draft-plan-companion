@@ -2,8 +2,8 @@
 
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft as it happens, compares it against the configured draft plan, ranks the
-available pool, and adds an explainable **Cost of waiting** view for the four
-tracked positions.
+available pool, and adds explainable **Cost of waiting** context directly to the
+main draft board for the four tracked positions.
 
 What it should eventually do is specified in
 [docs/draft-companion-planning/](docs/draft-companion-planning/); what it does
@@ -100,10 +100,15 @@ Top to bottom:
 | **Ranked** | The next 32 best undrafted players, one player per rank row |
 
 The ranked band always shows up to **32 available players**; checkpoint length no
-longer controls that horizon. Each ranked player shows canonical ADP when
-available plus the ADP-loss result for each of the user's next two projected
-selections. The best current static-ADP player at each position is marked on the
-board.
+longer controls that horizon. Ordinary ranked rows stay intentionally quiet.
+Cost of waiting is concentrated on the best current static-ADP player at each
+position and the actual fallback players projected at the user's next two picks.
+
+For each QB/RB/WR/TE anchor, the board shows the fallback player's name, how many
+current board spots lower that fallback sits, and the static-ADP deterioration.
+The fallback player's actual row is outlined and tagged, with a vertical rail
+connecting the best-current player to that fallback when it is within the shown
+32. The first and second future-pick paths are visually distinct.
 
 Horizontal markers show where the user's next two projected selections fall on
 the static-ADP curve. A marker is placed before the first displayed player whose
@@ -120,34 +125,35 @@ context, not a replacement for the checkpoint board.
 
 ## Cost of waiting
 
-The panel beneath the main board answers: **what does static ADP suggest I give
-up if I pass this player and wait until either of my next two projected picks?**
-It updates automatically with the live board and requires no draft-time
-interaction.
+Cost of waiting is shown **only on the main draft board**. There is no separate
+Cost of waiting panel. The board answers: **if I pass the best player available
+at this position, who does static ADP suggest I may have to settle for at each
+of my next two projected picks, and how far down the board is that player?**
 
-For each tracked position it exposes:
+For each tracked position the board exposes:
 
-- the best available static-ADP player now, visibly marked **BEST NOW**;
-- the user's next two projected selections;
-- the position-level fallback at each projected pick;
-- each displayed candidate's static ADP;
-- the fallback that applies to that candidate at each projected pick;
-- **ADP loss if waiting**, calculated as fallback ADP minus candidate ADP;
-- the current checkpoint shortfall as separate context.
+- the best available static-ADP player now, visibly marked **BEST QB/RB/WR/TE**;
+- the fallback player's name at each of the user's next two projected selections;
+- the fallback's distance down the current 32-player board (`↓N spots`);
+- **ADP loss if waiting**, calculated as fallback ADP minus current-player ADP;
+- the actual fallback row, highlighted and connected to the position anchor.
 
-The MVP availability assumption is deliberately simple and visible:
+The MVP availability assumption is deliberately simple:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
 For each projected pick, the fallback is the best undrafted same-position player
-satisfying that rule. If a candidate's own ADP is already at or after that pick,
-that same player is its own fallback and its ADP loss is zero. If no
-same-position player satisfies the rule, the fallback and cost are shown as
-unavailable rather than invented.
+satisfying that rule. If the best-current player's own ADP is already at or
+after that pick, that same player is its own fallback and its cost is zero. If
+no same-position player satisfies the rule, the fallback is shown as unavailable
+rather than invented.
 
 `ADP loss if waiting` is an **ordinal ADP-rank deterioration**, not a player-value
-metric. For example, a candidate at ADP 10 with a fallback at ADP 30 shows
-`+20`. The MVP deliberately does not convert this into a value percentage or a
+metric. For example, a current player at ADP 10 with a fallback at ADP 30 shows
+`ADP +20`. Board distance is separate: if that fallback is row 14 while the
+current player is row 3, the board shows `↓11 spots`.
+
+The MVP deliberately does not convert these numbers into a value percentage or a
 Draft now / Consider now / Can wait verdict because those transformations have
 not yet been empirically calibrated.
 
