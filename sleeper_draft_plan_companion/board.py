@@ -14,10 +14,6 @@ import csv
 import re
 from pathlib import Path
 from typing import Any
-from __future__ import annotations
-
-from typing import Any
-
 from . import draft, sleeper
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
