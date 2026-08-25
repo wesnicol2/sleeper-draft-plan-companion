@@ -4,7 +4,7 @@
 
 .decision-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -16,7 +16,7 @@
 }
 
 .decision-head,
-.decision-line,
+.decision-summary,
 .decision-context-row {
   display: flex;
   align-items: center;
@@ -25,66 +25,46 @@
 }
 
 .decision-head {
-  margin-bottom: 0.6rem;
+  margin-bottom: 0.5rem;
 }
 
-.decision-line {
-  font-size: 0.9rem;
-  padding: 0.15rem 0;
+.decision-summary {
+  font-size: 0.86rem;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--border, #e5e5e5);
+  border-bottom: 1px solid var(--border, #e5e5e5);
 }
 
-.decision-line > span:first-child {
+.decision-summary > span:first-child {
   color: #777;
   flex: 0 0 auto;
 }
 
-.decision-line > span:last-child {
+.decision-summary > span:last-child {
   text-align: right;
 }
 
-.decision-rec {
-  border-radius: 999px;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.78rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.decision-rec.draft-now {
-  background: #f7d7d7;
-  color: #7a1e1e;
-}
-
-.decision-rec.consider-now {
-  background: #f6ebc9;
-  color: #6c5110;
-}
-
-.decision-rec.can-wait {
-  background: #dcefdc;
-  color: #205f20;
-}
-
-.decision-rec.unavailable {
-  background: #ececec;
-  color: #555;
-}
-
+.decision-team,
 .decision-adp {
   color: #777;
   font-size: 0.8em;
   white-space: nowrap;
 }
 
-.decision-none {
+.decision-none,
+.decision-same {
   font-style: italic;
+  color: #777;
 }
 
 .decision-timing,
 .decision-context-row,
-.decision-influence,
 .decision-reason {
   font-size: 0.8rem;
+}
+
+.decision-context-row,
+.decision-reason {
   margin-top: 0.45rem;
 }
 
@@ -92,9 +72,56 @@
   font-weight: 700;
 }
 
-.decision-influence {
-  border-left: 3px solid currentColor;
-  padding-left: 0.45rem;
+.decision-table-wrap {
+  overflow-x: auto;
+  margin-top: 0.55rem;
+}
+
+.decision-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.decision-table th,
+.decision-table td {
+  padding: 0.4rem 0.35rem;
+  border-bottom: 1px solid var(--border, #e5e5e5);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.decision-table th {
+  color: #666;
+  font-size: 0.75rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.decision-table .decision-number {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.decision-candidate-best {
+  font-weight: 650;
+  background: rgba(127, 127, 127, 0.08);
+}
+
+.decision-best {
+  display: inline-block;
+  margin-right: 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0.08rem 0.3rem;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+}
+
+.decision-loss {
+  font-size: 1.05em;
 }
 
 .decision-rules {
@@ -102,12 +129,6 @@
 }
 
 @media (max-width: 900px) {
-  .decision-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 560px) {
   .decision-grid {
     grid-template-columns: 1fr;
   }
