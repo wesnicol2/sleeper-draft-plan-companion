@@ -96,9 +96,13 @@ def ranked_pool(
             "rank_source": source,
             "rank_value": value,
         }
-        for index, (_sort_key, player_id, player, source, value) in enumerate(
-            pool[:limit], start=1
-        )
+        for index, (
+            _sort_key,
+            player_id,
+            player,
+            source,
+            value,
+        ) in enumerate(pool[:limit], start=1)
     ]
 
 
@@ -142,7 +146,8 @@ def _infer_mock_slot(
         (
             pick
             for pick in picks
-            if str(pick.get("picked_by") or "") == user_id and pick.get("draft_slot") is not None
+            if str(pick.get("picked_by") or "") == user_id
+            and pick.get("draft_slot") is not None
         ),
         None,
     )
@@ -172,7 +177,10 @@ def _future_user_picks(state: dict[str, Any], count: int = 2) -> list[int]:
     return picks
 
 
-def _pick_markers(ranked: list[dict[str, Any]], future_picks: list[int]) -> list[dict[str, Any]]:
+def _pick_markers(
+    ranked: list[dict[str, Any]],
+    future_picks: list[int],
+) -> list[dict[str, Any]]:
     """Locate projected picks on the 32-player board using canonical ADP."""
     markers = []
     for ordinal, pick_no in enumerate(future_picks, start=1):
@@ -229,7 +237,9 @@ def build_board(
     state["my_next_pick_no"] = future_picks[0] if future_picks else None
     current_pick = (state.get("on_the_clock") or {}).get("pick_no")
     state["picks_until_my_turn"] = (
-        future_picks[0] - current_pick if future_picks and current_pick is not None else None
+        future_picks[0] - current_pick
+        if future_picks and current_pick is not None
+        else None
     )
 
     adp_index, _scoring, adp_error = adp_index_for(draft_id, players, fresh=fresh)
