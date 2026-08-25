@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import adp, draft, sleeper
+from . import adp, decision, draft, sleeper
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
@@ -196,6 +196,8 @@ def build_board(
         state["ranked"] = []
         state["criteria_max"] = len(CRITERIA)
         state["rows"] = rows
+        state["decision_context"] = []
+        state["decision_rules"] = decision.decision_rules()
         return state
 
     taken = {
@@ -232,6 +234,16 @@ def build_board(
             lean,
         )
 
+    current_pick = (state.get("on_the_clock") or {}).get("pick_no")
+    state["decision_context"] = decision.build_decision_context(
+        players,
+        taken,
+        adp_index,
+        current_pick,
+        state.get("my_next_pick_no"),
+        needs,
+    )
+    state["decision_rules"] = decision.decision_rules()
     state["columns"] = order_columns(
         counts,
         needs,
