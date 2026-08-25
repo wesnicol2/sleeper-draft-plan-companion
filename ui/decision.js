@@ -22,26 +22,25 @@ function adpValue(player) {
   return decisionEsc(player.adp_rank);
 }
 
-function fallbackCell(candidate) {
-  const fallback = candidate.fallback;
+function projectionCell(projection, candidate) {
+  if (!projection) return '<span class="decision-none">Unavailable</span>';
+  const fallback = projection.fallback;
   if (!fallback) return '<span class="decision-none">No projected fallback</span>';
-  if (fallback.player_id === candidate.player_id) {
-    return '<span class="decision-same">Same player projected to remain</span>';
-  }
-  return playerName(fallback) + ' <span class="decision-adp">ADP ' +
-    adpValue(fallback) + '</span>';
-}
-
-function lossCell(candidate) {
-  if (candidate.adp_loss_if_waiting == null) return '—';
-  return '<strong class="decision-loss">+' +
-    decisionEsc(candidate.adp_loss_if_waiting) + '</strong>';
+  const loss = projection.adp_loss_if_waiting == null
+    ? '—'
+    : '<strong class="decision-loss">+' + decisionEsc(projection.adp_loss_if_waiting) + '</strong>';
+  const fallbackText = fallback.player_id === candidate.player_id
+    ? '<span class="decision-same">same player</span>'
+    : playerName(fallback) + ' <span class="decision-adp">ADP ' + adpValue(fallback) + '</span>';
+  return '<span class="decision-projection-fallback">' + fallbackText + '</span>' +
+    '<span class="decision-projection-loss">loss ' + loss + '</span>';
 }
 
 function renderDecisionContext(board) {
   const box = document.getElementById('decisionContext');
   const rules = document.getElementById('decisionRules');
   const rows = board.decision_context || [];
+  const futurePicks = board.my_next_pick_nos || [];
 
   if (!rows.length) {
     box.innerHTML = '<p class="muted">Cost-of-waiting context unavailable.</p>';
@@ -50,18 +49,22 @@ function renderDecisionContext(board) {
   }
 
   box.innerHTML = rows.map(row => {
-    const timing = row.next_pick == null
-      ? 'Next pick unavailable'
-      : 'Next pick ' + row.next_pick +
-        (row.picks_until_next == null ? '' : ' · ' + row.picks_until_next + ' picks away');
     const need = row.checkpoint_need > 0
       ? '<span class="decision-need">Checkpoint need: ' + row.checkpoint_need + '</span>'
       : '<span class="muted">Checkpoint need: none</span>';
-    const fallback = row.next_pick_fallback
-      ? playerName(row.next_pick_fallback) + ' <span class="decision-adp">ADP ' +
-        adpValue(row.next_pick_fallback) + '</span>'
-      : '<span class="decision-none">none projected</span>';
     const candidates = row.candidates || [];
+    const positionProjections = row.position_projections || [];
+
+    const fallbackSummary = positionProjections.length
+      ? positionProjections.map((projection, index) => {
+          const fallback = projection.fallback
+            ? playerName(projection.fallback) + ' <span class="decision-adp">ADP ' +
+              adpValue(projection.fallback) + '</span>'
+            : '<span class="decision-none">none projected</span>';
+          return '<span><strong>Pick ' + decisionEsc(projection.pick_no) + ':</strong> ' +
+            fallback + '</span>';
+        }).join('<span class="decision-summary-sep">·</span>')
+      : '<span class="decision-none">Projected picks unavailable</span>';
 
     const candidateRows = candidates.length
       ? candidates.map(candidate => {
@@ -69,22 +72,26 @@ function renderDecisionContext(board) {
             ? '<span class="decision-best">BEST NOW</span>'
             : '';
           const cls = candidate.is_best_now ? ' decision-candidate-best' : '';
+          const projections = candidate.projections || [];
           return '<tr class="decision-candidate' + cls + '">' +
             '<td>' + best + playerName(candidate) + '</td>' +
             '<td class="decision-number">' + adpValue(candidate) + '</td>' +
-            '<td>' + fallbackCell(candidate) + '</td>' +
-            '<td class="decision-number">' + lossCell(candidate) + '</td>' +
+            '<td>' + projectionCell(projections[0], candidate) + '</td>' +
+            '<td>' + projectionCell(projections[1], candidate) + '</td>' +
             '</tr>';
         }).join('')
       : '<tr><td colspan="4" class="muted">No displayed candidates at this position.</td></tr>';
 
+    const firstPick = futurePicks[0] == null ? 'Pick 1' : 'Pick ' + futurePicks[0];
+    const secondPick = futurePicks[1] == null ? 'Pick 2' : 'Pick ' + futurePicks[1];
+
     return '<article class="decision-item">' +
       '<div class="decision-head"><strong>' + decisionEsc(row.position) + '</strong>' +
-      '<span class="decision-timing muted">' + decisionEsc(timing) + '</span></div>' +
-      '<div class="decision-summary"><span>Next-pick fallback</span><span>' + fallback + '</span></div>' +
-      '<div class="decision-context-row">' + need + '</div>' +
+      '<div class="decision-context-row">' + need + '</div></div>' +
+      '<div class="decision-summary"><span>Projected fallbacks</span><span>' + fallbackSummary + '</span></div>' +
       '<div class="decision-table-wrap"><table class="decision-table">' +
-      '<thead><tr><th>Candidate</th><th>ADP</th><th>If you wait</th><th>ADP loss</th></tr></thead>' +
+      '<thead><tr><th>Candidate</th><th>ADP</th><th>' + decisionEsc(firstPick) +
+      '</th><th>' + decisionEsc(secondPick) + '</th></tr></thead>' +
       '<tbody>' + candidateRows + '</tbody></table></div>' +
       '<div class="decision-reason muted">' + decisionEsc(row.reason || '') + '</div>' +
       '</article>';
