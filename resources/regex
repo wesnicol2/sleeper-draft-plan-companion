@@ -1,0 +1,4 @@
+NOTE: This regex find and replace can be used to translate the copied and pasted table from https://www.beatadp.com/platform-adp into the CSV in adp.csv
+
+
+(\d+)\s+([A-Z]+)[\s\n]+(\d+)[\s\n]+([^●]+?)[\s\n]+●[\s\n]+([A-Z]+)[\s\n]+([\s\S]+?)[\s\n]+([+-]\d+)?[\s\n]*(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)
