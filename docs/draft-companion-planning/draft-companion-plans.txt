@@ -7,25 +7,48 @@
 Minimum viable product: A auto updating UI (no interaction needed from user) which shows top picks based on draft plan. Players should be highlighted with different colors based on how many draft plan criteria they have
 
 NEXT STEPS: 
-- Assign position strength based on players drafted. This should work with the positional needs to determin which position is most needed. If we already have round 1 and 2 rbs, we probably don't need many more. Positions should shoot for strength rather than number of players. 
-    - Round 1 draftee would have the most weight, round 2 less, all the way to 15 on an inverse exponential curve x^-2 (in the future, strengthen this with WAR of each individual player rather than inverse exponential x^-2)
-- Some way to see remaining players at a position even if they aren't in the next set of picks in the checkpoint. Needs more definition, but I want to avoid taking a QB in an earlier round because I don't realize other ones who are almost as good are way further down. Same applies for other positions but mainly qb and TE. Something like a "later round options". This might be directly related to WAR 
-- Simplify my choices by highlighting the following:
-    - synergy with existing team
-    - offensive team rank (expected points to be scored)
-    - strong handcuffs, 
-    - bye week protection (negatively highlight players who have matching bye weeks to your existing players at that same position)
-    - players with new, better coaches, 
-    - players with new, better teammates, 
-    - starter injury possibility, 
-    etc...
-- Implement some way to see what other players are available if you skip the one that is available now. For example - I might not want to draft a goodish QB in the 6th round if I remember there is an Okay QB in the 14th. I want to see those who might be available later so I don't blow my load in the earlier rounds than I need to. 
-- implement rankings so we can define an order for players. We should have rank, but rank can be manually set, adjusted, or you can pick from an array of options to rank with (adp or war) 
-- figure some way to define WAR (wins above replacement) - or just take it from rankings given? 
-- integrate with flock fantasy (or some other ranking online) for better fidelity rankings
-- Explicitly identify dropoffs/deadzones for each position - for WR it's after Jaylen Cocher
-- find some way to define value above replacement in the draft to highlight when a player is the last option before a drop off or something
-
+- Improve player highlighting and decision context
+    - Add team synergy signals:
+        - Highlight WRs/TEs whose QB is already on the roster.
+        - Highlight QBs whose WR/TE is already on the roster.
+    - Add bye-week signals:
+        - Negatively highlight players whose bye week conflicts with an existing player at the same position.
+    - Keep each signal separate and explainable rather than incorporating them into ranking yet.
+- Model positional strength
+    - In the draft-plan, Replace simple player counts with weighted positional strength. We should be looking for strength at each position, not plain counts of players
+    - Weight drafted players by round, initially using an inverse-square curve (1 / round²).
+    - Combine positional strength with remaining positional needs to determine which positions are actually scarce.
+    - Eventually replace round-based weighting with the individual player's WAR.
+- Build a flexible player-ranking system
+    - Give every player a canonical rank and support multiple ranking sources.
+    - Initially support the static ADP CSV, with the ability to manually override ranks.
+    - Later support alternative ranking sets such as ADP, external rankings, and WAR.
+        - Define player value above replacement
+        - Establish a positional definition of replacement value.
+        - Calculate value above replacement for each player.
+    - Use the value gaps to identify meaningful positional drop-offs and “dead zones.”
+    - Identify the last strong option at each position before a significant drop-off.
+- Add later-round alternatives
+- Show the best remaining players at each position outside the current checkpoint.
+- Include their rank/value and likely draft range.
+- Use this to answer “Can I safely wait?” before drafting a position early.
+- Base this increasingly on WAR and positional drop-offs rather than arbitrary round thresholds.
+- Build a draft-value/recommendation model
+- Combine ranking, positional need, positional strength, WAR, drop-off risk, and later-round alternatives.
+- Add contextual signals such as:
+    - team/offensive environment
+    - handcuff value
+    - coaching changes
+    - teammate changes
+    - starter/injury opportunity
+    - bye-week fit
+    - roster synergy
+    - Keep individual factors visible so recommendations remain explainable.
+- Integrate higher-fidelity rankings
+- Validate the model against real drafts
+    - Replay historical draft scenarios.
+    - Test whether the system correctly identifies scarcity, safe waits, drop-offs, and players who should be taken before a positional cliff.
+    - Tune heuristics only after observing where the model produces bad recommendations.
 
 - Player notes / snippets
     - When I hear something about a player (podcast, beat writer, injury chatter), log it against that player
