@@ -183,6 +183,98 @@ def build_adp_index(
 
     return index
 
+def explain_rankings(
+    draft_id: str,
+    limit: int = 40,
+    fresh: bool = False,
+) -> dict[str, Any]:
+    """Explain the same ordering used by the board."""
+    raw_draft = draft.get_draft(draft_id, fresh=fresh)
+
+    if not raw_draft or not raw_draft.get("draft_id"):
+        return {
+            "error": "draft_not_found",
+            "draft_id": draft_id,
+        }
+
+    players, _fetched_at = sleeper.load_players()
+
+    taken = {
+        pick["player_id"]
+        for pick in draft.get_picks(draft_id, fresh=fresh)
+        if pick.get("player_id")
+    }
+
+    adp_index, _scoring, adp_error = adp_index_for(
+        draft_id,
+        players,
+        fresh=fresh,
+    )
+
+    ranked = ranked_pool(
+        players,
+        taken,
+        limit,
+        adp_index,
+    )
+
+    counts_by_value: dict[tuple[str, Any], int] = {}
+
+    for entry in ranked:
+        key = (
+            entry["rank_source"],
+            entry["rank_value"],
+        )
+        counts_by_value[key] = counts_by_value.get(key, 0) + 1
+
+    rows = []
+
+    for entry in ranked:
+        player = players.get(entry["player_id"]) or {}
+
+        rows.append(
+            {
+                "rank": entry["rank"],
+                "name": entry["name"],
+                "position": entry["position"],
+                "team": entry["team"],
+                "rank_source": entry["rank_source"],
+                "rank_value": entry["rank_value"],
+                "adp": adp_index.get(entry["player_id"]),
+                "search_rank": player.get("search_rank"),
+                "ties": counts_by_value[
+                    (
+                        entry["rank_source"],
+                        entry["rank_value"],
+                    )
+                ],
+            }
+        )
+
+    from_adp = sum(
+        1
+        for row in rows
+        if row["rank_source"] == "adp"
+    )
+
+    return {
+        "draft_id": draft_id,
+        "scoring": None,
+        "adp_error": adp_error,
+        "adp_players_matched": len(adp_index),
+        "shown": len(rows),
+        "ranked_by": {
+            "adp": from_adp,
+            "search_rank": len(rows) - from_adp,
+        },
+        "note": (
+            "rank_source says which value decided the row. "
+            "CSV ADP uses the rank in resources/adp.csv; "
+            "search_rank is only the fallback."
+        ),
+        "rows": rows,
+    }
+
 
 def reset_cache() -> None:
     """Clear the in-process CSV cache. Intended for tests."""
