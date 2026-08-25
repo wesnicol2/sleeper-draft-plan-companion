@@ -36,8 +36,8 @@ The service is intentionally small:
 - `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
   Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
-- `board.py` assembles the board and joins live state, ADP, and plan context.
-- `decision.py` owns Cost of waiting context.
+- `board.py` assembles the 32-player board, future-pick markers, and joined ADP/plan context.
+- `decision.py` owns two-pick Cost of waiting context.
 - `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
 
 The board renderer does not own ranking or recommendation logic. Server payloads
@@ -74,11 +74,13 @@ players rostered. A fixed RB/WR/TE/QB order is the final tie-break.
 That fixed tie-break matters: the board must not visibly reshuffle because of
 dictionary iteration when the underlying draft state has not changed.
 
-### Rows shown follow checkpoint timing
+### The ranked horizon is fixed at 32 available players
 
-The ranked band is not an arbitrary top-N. While a checkpoint is active it uses
-the number of picks left in that checkpoint. With no active checkpoint it falls
-back to roughly one round of choices.
+Checkpoint timing used to control the number of ranked rows. That made the board
+shrink exactly when the user wanted to compare present choices against future
+availability. The ranked band now always shows up to 32 available players,
+independent of checkpoint length. Checkpoints still control needs/highlighting;
+they no longer control the board's look-ahead horizon.
 
 ### Static CSV ADP is canonical
 
@@ -122,12 +124,16 @@ disagree with the behavior it is supposed to explain.
 
 `draft.slot_on_the_clock()` and `draft.next_pick_for_slot()` are deliberately
 separate functions. Snake logic is easy to get right in round one and wrong in
-every even round. The user's projected next selection is computed from current
-pick number, slot, team count, and round count rather than estimated from ADP.
+every even round. The board walks that same function repeatedly to expose the
+user's next two scheduled selections rather than estimating future picks from
+ADP.
 
 Mock drafts may not publish a usable draft order before they start, which is why
 `SLEEPER_DRAFT_SLOT` exists as an explicit override instead of silently assuming
-slot 1.
+slot 1. A real Test session also showed that some active mocks can still leave
+the user slot unresolved. Once the configured user has made a pick, `board.py`
+can safely recover the slot by matching the pick's `picked_by` user ID to its
+`draft_slot`. Before such evidence exists, the app still refuses to guess.
 
 ### Draft discovery goes through leagues; mocks cannot be enumerated
 
@@ -151,37 +157,38 @@ This feature is intentionally **decision context**, not a master player score.
 The question is narrow:
 
 > If I pass on this player, what same-position option does static ADP suggest I
-> could still have at my next pick, and how far down the ADP list is that option?
+> could still have at each of my next two scheduled selections, and how far down
+> the ADP list are those fallback options?
 
 For each QB/RB/WR/TE, `decision.build_decision_context()` receives only data the
 application already has: available players, drafted IDs, canonical static ADP,
-current overall pick, projected next user pick, checkpoint shortfall, and the
-candidates currently displayed by the board.
+current overall pick, the user's next two projected picks, checkpoint shortfall,
+and the candidates currently displayed by the board.
 
 ### Availability assumption
 
-For the MVP, a player is treated as plausibly available at the user's next pick
-when:
+For each projected user pick, a player is treated as plausibly available when:
 
-`static ADP rank >= next projected pick`
+`static ADP rank >= projected user pick`
 
-The **position-level next-pick fallback** is the best undrafted same-position
-player satisfying that rule. This is deliberately simple. It is not a
-probabilistic survival model. The assumption is returned in `decision_rules` and
-displayed in the UI so later work can replace it without pretending the current
-model is more sophisticated than it is.
+The **position-level fallback** for that pick is the best undrafted
+same-position player satisfying that rule. This is deliberately simple. It is
+not a probabilistic survival model. The assumption is returned in
+`decision_rules` and displayed in the UI so later work can replace it without
+pretending the current model is more sophisticated than it is.
 
-For an individual candidate:
+For an individual candidate at either projected pick:
 
-- if the candidate's own ADP is already at or after the next projected pick, the
+- if the candidate's own ADP is already at or after that projected pick, the
   candidate is its own fallback;
-- otherwise the candidate uses the position-level next-pick fallback;
+- otherwise the candidate uses the position-level fallback for that projected
+  pick;
 - if no such fallback exists, the cost remains unavailable rather than being
   fabricated.
 
-The best static-ADP player currently available at each position is always added
-to the context and marked `is_best_now`, even when the global board row limit did
-not include that player. This keeps the positional anchor visible.
+The best static-ADP player currently available at each position is marked
+`is_best_now`. The same positional anchor is highlighted both in the detailed
+Cost of waiting table and directly on the main board.
 
 ### The MVP metric is ADP deterioration, not player value
 
@@ -191,10 +198,14 @@ For a candidate with a usable fallback:
 
 Example: candidate ADP 10 and fallback ADP 30 produces `+20`.
 
+The calculation is performed separately for each of the user's next two picks,
+so the board can show the shape of near-term deterioration without pretending to
+model a full future value curve.
+
 This number is **ordinal rank deterioration**. It is not the mathematical
 `Current Value - Future Value` from the long-term theory because static ADP rank
 is not a cardinal player-value scale and lower ranks are better. The code and UI
-must not describe `+20 ADP` as 20 units of player value lost.
+must not describe `+20 ADP` as 20 units of fantasy value lost.
 
 For the same reason, the MVP does not compute `(current - future) / current` as a
 scarcity percentage. Doing that with raw ordinal ranks would create a precise-
@@ -208,7 +219,7 @@ need to raise the bucket. That was removed before feature promotion because the
 thresholds were not empirically calibrated.
 
 The current MVP shows the numbers first. The user can compare candidate ADP,
-next-pick fallback, and ADP loss directly. Future wait-safety categories should
+future fallbacks, and ADP loss directly. Future wait-safety categories should
 only be introduced after historical replay or other evidence supports useful
 thresholds.
 
@@ -226,7 +237,7 @@ turn a roster need into a different opportunity-cost number.
 ### Safe degradation
 
 Missing canonical ADP for a displayed candidate produces no ADP-loss number for
-that candidate. A missing projected next pick behaves the same way. The model
+that candidate. Missing projected user picks behave the same way. The model
 never silently switches ranking source just to avoid an empty value.
 
 Drafted and inactive players are excluded before best-now/fallback candidates
@@ -255,6 +266,18 @@ later cells and make unrelated columns appear misaligned.
 The ranked band is one player per rank row in the player's own position column.
 The geometry, not frontend sorting, communicates cross-position order.
 
+### Future picks are overlaid on the board, not converted into rank
+
+The main board draws a horizontal marker before the first displayed canonical-
+ADP player whose ADP is at or after each projected user pick. That uses the same
+availability boundary as Cost of waiting. If a projected boundary is beyond the
+32 displayed players, the marker is placed at the bottom and explicitly labeled
+instead of silently disappearing.
+
+Each ranked cell also shows its canonical ADP and the two per-pick ADP-loss
+values supplied by the server. The frontend formats those values but does not
+recalculate fallback logic.
+
 ### Highlighting and cost context are different concepts
 
 Existing ranked-player highlighting answers how many checkpoint criteria a
@@ -262,9 +285,9 @@ player satisfies. Cost of waiting answers draft timing using static ADP. They ar
 kept visually and structurally separate so a user can see both rather than
 having one unexplained color encode unrelated ideas.
 
-Within each cost-of-waiting position table, the static-ADP best available player
-is explicitly marked **BEST NOW**. That is a label for the positional anchor,
-not a recommendation to draft the player.
+Within each cost-of-waiting position table and on the main board, the static-ADP
+best available player is explicitly marked. That is a positional anchor, not a
+recommendation to draft the player.
 
 ### No draft-time controls for cost context
 
@@ -298,6 +321,10 @@ which avoids storing home-network deployment credentials in GitHub Actions.
 - **Uncalibrated urgency thresholds are worse than raw evidence.** The first
   5/12-rank Draft-now buckets were removed in favor of displaying the underlying
   numbers until historical validation can justify thresholds.
+- **Real mock drafts exposed slot-resolution behavior that fixtures missed.** If
+  draft order is unusable but the configured user has already made a pick,
+  `picked_by` plus `draft_slot` is evidence sufficient to recover the slot. Do
+  not guess before that evidence exists.
 - **FantasyPros ranking experiments showed that source semantics matter more
   than a green fixture suite.** Positional filtering changed returned rank
   meaning and free-tier coverage was too incomplete to be a reliable canonical
