@@ -60,22 +60,14 @@ def build_decision_context(
     taken_ids: set[str],
     adp_index: dict[str, int],
     current_pick: int | None,
-    future_picks: list[int] | None,
+    future_picks: list[int] | int | None,
     checkpoint_needs: dict[str, int] | None = None,
     candidate_ids: list[str] | None = None,
 ) -> list[dict[str, Any]]:
-    """Describe numeric cost of waiting at the user's next two selections.
-
-    Static ADP is only an availability proxy in this MVP. For each projected
-    user pick, the fallback is the best undrafted same-position player whose
-    static ADP rank is at or after that pick. If a candidate's own ADP is at or
-    after the projected pick, that candidate is its own fallback and the ADP
-    loss is zero.
-
-    ``adp_loss_if_waiting`` is ordinal ADP-rank deterioration, not a player-
-    value metric. Checkpoint need is exposed separately and never changes it.
-    """
+    """Describe numeric cost of waiting at the user's next two selections."""
     checkpoint_needs = checkpoint_needs or {}
+    if isinstance(future_picks, int):
+        future_picks = [future_picks]
     future_picks = list(future_picks or [])[:2]
     candidate_ids = candidate_ids or []
     candidate_order = {player_id: index for index, player_id in enumerate(candidate_ids)}
@@ -90,7 +82,6 @@ def build_decision_context(
                 continue
             if player.get("position") != position:
                 continue
-
             adp_rank = adp_index.get(player_id)
             available.append((adp_rank, player_id, player))
             if adp_rank is not None:
@@ -118,7 +109,6 @@ def build_decision_context(
 
         chosen_candidates = [item for item in available if item[1] in candidate_order]
         chosen_candidates.sort(key=lambda item: candidate_order[item[1]])
-
         if best_now_tuple is not None and all(
             item[1] != best_now_tuple[1] for item in chosen_candidates
         ):
@@ -127,23 +117,38 @@ def build_decision_context(
         candidate_rows: list[dict[str, Any]] = []
         for candidate in chosen_candidates:
             adp_rank, player_id, player = candidate
+            projections = [
+                _projection_for_pick(candidate, ranked_with_adp, pick_no)
+                for pick_no in future_picks
+            ]
+            first_projection = projections[0] if projections else None
             candidate_rows.append(
                 {
                     **_player_view(player_id, player, adp_rank),
                     "is_best_now": bool(
                         best_now_tuple is not None and player_id == best_now_tuple[1]
                     ),
-                    "projections": [
-                        _projection_for_pick(candidate, ranked_with_adp, pick_no)
-                        for pick_no in future_picks
-                    ],
+                    "projections": projections,
+                    # Compatibility for clients/tests written for the one-pick MVP.
+                    "fallback": first_projection["fallback"] if first_projection else None,
+                    "adp_loss_if_waiting": (
+                        first_projection["adp_loss_if_waiting"] if first_projection else None
+                    ),
                 }
             )
 
+        first_position_projection = position_projections[0] if position_projections else None
+        first_pick = future_picks[0] if future_picks else None
         entry: dict[str, Any] = {
             "position": position,
             "current_pick": current_pick,
             "future_picks": future_picks,
+            "next_pick": first_pick,
+            "picks_until_next": (
+                first_pick - current_pick
+                if first_pick is not None and current_pick is not None
+                else None
+            ),
             "checkpoint_need": int(checkpoint_needs.get(position, 0) or 0),
             "available_without_adp": sum(1 for item in available if item[0] is None),
             "best_now": (
@@ -152,6 +157,9 @@ def build_decision_context(
                 else None
             ),
             "position_projections": position_projections,
+            "next_pick_fallback": (
+                first_position_projection["fallback"] if first_position_projection else None
+            ),
             "candidates": candidate_rows,
             "reason": None,
         }
