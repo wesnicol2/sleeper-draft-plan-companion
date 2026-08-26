@@ -1,0 +1,14 @@
+.board-strength-total {
+  display: block;
+  margin-top: 0.18rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  opacity: 0.72;
+}
+
+.board-strength-contribution {
+  display: block;
+  margin-top: 0.12rem;
+  font-size: 0.66rem;
+  opacity: 0.66;
+}
