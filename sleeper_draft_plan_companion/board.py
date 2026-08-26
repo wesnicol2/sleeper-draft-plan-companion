@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import adp, decision, draft, sleeper
+from . import adp, decision, draft, sleeper, strength
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
@@ -20,14 +20,20 @@ CRITERIA = (
 def order_columns(
     counts: dict[str, int],
     needs: dict[str, int],
+    strengths: dict[str, float] | None = None,
 ) -> list[str]:
-    """Put positions still short first, largest shortfall first."""
+    """Put short positions first, then prefer positions with lower strength."""
+    strengths = strengths or {}
 
-    def sort_key(position: str) -> tuple[int, int, int]:
+    def sort_key(position: str) -> tuple[int, int, float, int, int]:
         shortfall = needs.get(position, 0)
-        if shortfall > 0:
-            return (0, -shortfall, TIE_BREAK_ORDER.index(position))
-        return (1, counts.get(position, 0), TIE_BREAK_ORDER.index(position))
+        return (
+            0 if shortfall > 0 else 1,
+            -shortfall if shortfall > 0 else 0,
+            strengths.get(position, 0.0),
+            counts.get(position, 0),
+            TIE_BREAK_ORDER.index(position),
+        )
 
     return sorted(TRACKED_POSITIONS, key=sort_key)
 
@@ -195,6 +201,18 @@ def _pick_markers(
     return markers
 
 
+def _add_strength_context(state: dict[str, Any], needs: dict[str, int]) -> dict[str, float]:
+    roster = state.get("my_roster") or {}
+    summary = strength.summarize_roster(roster, needs)
+    for position, position_summary in summary.items():
+        for rostered, weighted in zip(
+            roster.get(position, []), position_summary["players"], strict=False
+        ):
+            rostered["strength_contribution"] = weighted["contribution"]
+    state["positional_strength"] = summary
+    return {position: item["strength"] for position, item in summary.items()}
+
+
 def build_board(
     draft_id: str,
     username: str | None = None,
@@ -208,13 +226,14 @@ def build_board(
     checkpoint = state.get("checkpoint")
     counts = state.get("my_counts") or {}
     needs = (checkpoint or {}).get("still_needed") or {}
+    strengths = _add_strength_context(state, needs)
     rows = BOARD_ROWS
 
     try:
         players, _fetched_at = sleeper.load_players()
     except Exception as exc:
         state["board_error"] = f"player pool unavailable: {exc}"
-        state["columns"] = order_columns(counts, needs)
+        state["columns"] = order_columns(counts, needs, strengths)
         state["ranked"] = []
         state["criteria_max"] = len(CRITERIA)
         state["rows"] = rows
@@ -271,7 +290,7 @@ def build_board(
 
     state["decision_rules"] = decision.decision_rules()
     state["future_pick_markers"] = _pick_markers(ranked, future_picks)
-    state["columns"] = order_columns(counts, needs)
+    state["columns"] = order_columns(counts, needs, strengths)
     state["ranked"] = ranked
     state["criteria_max"] = len(CRITERIA)
     state["rows"] = rows

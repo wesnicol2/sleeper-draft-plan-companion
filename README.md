@@ -79,22 +79,23 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/plan` — active checkpoint plan and its source.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
-- `/board` — the board plus `decision_context`, two projected user picks, and
-  `decision_rules` for Cost of waiting. Accepts `?draft_id=` and `?fresh=1`.
+- `/board` — the 32-player board plus Cost of waiting and weighted positional
+  strength context. Accepts `?draft_id=` and `?fresh=1`.
 - `/rankings` — debugging view showing why the ranked pool is ordered as it is.
 
 ## The board
 
 The main grid reads vertically as rank and horizontally as position. The four
 tracked positions are QB, RB, WR, and TE. Columns with an unmet checkpoint need
-come first; already-satisfied positions follow.
+come first; already-satisfied positions are ordered by **weighted positional
+strength**, weakest first.
 
 Top to bottom:
 
 | Band | What it holds |
 | --- | --- |
-| Header | Position |
-| **Drafted** | The user's roster at that position |
+| Header | Position, weighted strength, and checkpoint need |
+| **Drafted** | The user's roster at that position, including each player's strength contribution |
 | *solid line* | Separation between owned and available players |
 | **Needs** | Outstanding checkpoint positional minimums |
 | **Ranked** | The next 32 best undrafted players, one player per rank row |
@@ -102,38 +103,38 @@ Top to bottom:
 The ranked band always shows up to **32 available players**; checkpoint length no
 longer controls that horizon. Ordinary ranked rows stay intentionally quiet.
 Cost of waiting is concentrated on the best current static-ADP player at each
-position and the actual fallback players projected at the user's next two picks.
+position and the fallback projected at the user's next pick.
 
 For each QB/RB/WR/TE anchor, the board shows the fallback player's name, how many
 current board spots lower that fallback sits, and the static-ADP deterioration.
 The fallback player's actual row is outlined and tagged, with a vertical rail
 connecting the best-current player to that fallback when it is within the shown
-32. The first and second future-pick paths are visually distinct.
+32.
 
-Horizontal markers show where the user's next two projected selections fall on
-the static-ADP curve. A marker is placed before the first displayed player whose
-canonical ADP is at or after that projected pick; if the boundary is beyond the
-32-player window, the marker is shown at the bottom and labeled accordingly.
+A horizontal marker shows where the user's next projected selection falls on the
+static-ADP curve. It is placed before the first displayed player whose canonical
+ADP is at or after that projected pick; if the boundary is beyond the 32-player
+window, the marker is shown at the bottom and labeled accordingly.
 
 Static CSV ADP is authoritative for players matched to `resources/adp.csv`.
 The existing board may use Sleeper `search_rank` as a fallback for unmatched
 players; `/rankings` exposes `rank_source` and `rank_value` so that fallback is
 visible rather than implicit.
 
-The checkpoint system remains intact. Cost of waiting is additional decision
-context, not a replacement for the checkpoint board.
+The checkpoint system remains intact. Cost of waiting and weighted strength are
+additional decision context, not replacements for checkpoint minimums.
 
 ## Cost of waiting
 
 Cost of waiting is shown **only on the main draft board**. There is no separate
 Cost of waiting panel. The board answers: **if I pass the best player available
-at this position, who does static ADP suggest I may have to settle for at each
-of my next two projected picks, and how far down the board is that player?**
+at this position, who does static ADP suggest I may have to settle for at my
+next projected pick, and how far down the board is that player?**
 
 For each tracked position the board exposes:
 
 - the best available static-ADP player now, visibly marked **BEST QB/RB/WR/TE**;
-- the fallback player's name at each of the user's next two projected selections;
+- the fallback player's name at the user's next projected selection;
 - the fallback's distance down the current 32-player board (`↓N spots`);
 - **ADP loss if waiting**, calculated as fallback ADP minus current-player ADP;
 - the actual fallback row, highlighted and connected to the position anchor.
@@ -142,33 +143,41 @@ The MVP availability assumption is deliberately simple:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
-For each projected pick, the fallback is the best undrafted same-position player
-satisfying that rule. If the best-current player's own ADP is already at or
-after that pick, that same player is its own fallback and its cost is zero. If
-no same-position player satisfies the rule, the fallback is shown as unavailable
-rather than invented.
+The fallback is the best undrafted same-position player satisfying that rule. If
+the best-current player's own ADP is already at or after that pick, that same
+player is its own fallback and its cost is zero. If no same-position player
+satisfies the rule, the fallback is shown as unavailable rather than invented.
 
 `ADP loss if waiting` is an **ordinal ADP-rank deterioration**, not a player-value
-metric. For example, a current player at ADP 10 with a fallback at ADP 30 shows
-`ADP +20`. Board distance is separate: if that fallback is row 14 while the
-current player is row 3, the board shows `↓11 spots`.
-
-The MVP deliberately does not convert these numbers into a value percentage or a
+metric. The MVP deliberately does not convert it into a value percentage or a
 Draft now / Consider now / Can wait verdict because those transformations have
 not yet been empirically calibrated.
 
 Checkpoint need is intentionally separate and does not alter the cost number.
-Missing static ADP or unavailable projected picks produce an explicit
-unavailable state rather than silently switching to a different ranking source.
-For real mocks where Sleeper does not expose a useful draft order, the board can
-recover the user's slot after the user has made a pick by matching Sleeper's
-`picked_by` value to that pick's `draft_slot`; before any such evidence exists,
-the explicit `SLEEPER_DRAFT_SLOT` override remains the safe fallback.
 
-This MVP does **not** implement WAR, replacement value, positional weighting,
-automatic cliffs/dead zones, roster synergy, bye-week logic, offensive
-environment, handcuffs, injury opportunity, coaching/teammate changes, or
-external ranking providers.
+## Weighted positional strength
+
+Roster count alone does not distinguish an early-round starter from a late-round
+dart throw. The current MVP therefore assigns every rostered QB/RB/WR/TE a draft
+investment contribution:
+
+`player strength = 1 / draft_round²`
+
+Examples: Round 1 = `1.000`, Round 2 = `0.250`, Round 3 = `0.111`, Round 5 =
+`0.040`, Round 10 = `0.010`.
+
+A position's strength is the sum of its rostered players' contributions. The
+board exposes both the total in the position header (`S 1.250`) and each drafted
+player's individual contribution (`S +1.000`). If the active checkpoint still
+requires players at that position, that count remains visible beside strength.
+
+Checkpoint minimums are still count-based. Strength does **not** silently change
+`still_needed`; it provides a separate description of how much draft investment
+is already held at that position. When checkpoint shortfalls are equal or absent,
+board column order uses lower positional strength before raw roster count.
+
+This is intentionally only a draft-investment proxy. It is not WAR and should be
+replaced later if a defensible player-value model becomes available.
 
 ## Draft plan
 
@@ -198,7 +207,8 @@ button is an escape hatch and sends `?fresh=1` for live draft state.
   - `adp.py` — static ADP loading and Sleeper-player matching.
   - `plan.py` — checkpoint-plan loading.
   - `board.py` — board assembly, 32-player horizon, future-pick markers, and decision-context integration.
-  - `decision.py` — deterministic two-pick Cost of waiting context.
+  - `decision.py` — deterministic Cost of waiting context.
+  - `strength.py` — inverse-square roster-strength calculation.
 - `resources/adp.csv` — canonical static ADP input.
 - `ui/` — plain HTML/CSS/vanilla JS; no build step.
 - `tests/` — unit tests.
