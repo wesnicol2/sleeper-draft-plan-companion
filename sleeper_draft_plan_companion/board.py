@@ -162,7 +162,11 @@ def _future_user_picks(state: dict[str, Any], count: int = 2) -> list[int]:
         return []
 
     picks: list[int] = []
-    cursor = on_clock
+    # "Next pick" means the user's next opportunity after the selection that is
+    # currently on the clock. Starting at on_clock would return the current pick
+    # when it belongs to the user, falsely treating the player being considered
+    # now as a future fallback.
+    cursor = on_clock + 1
     while len(picks) < count:
         pick_no = draft.next_pick_for_slot(cursor, int(slot), int(teams), int(rounds))
         if pick_no is None:
