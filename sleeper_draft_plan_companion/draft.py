@@ -12,12 +12,18 @@ import datetime as dt
 import time
 from typing import Any
 
-from . import config, sleeper, strength
+from . import config, sleeper
 from . import plan as plan_module
 
 DRAFTED_POSITIONS = ("QB", "RB", "WR", "TE")
 
+# url -> (payload, fetched_at). Small and short-lived on purpose.
 _CACHE: dict[str, tuple[Any, float]] = {}
+
+# One second, not three. During a live draft the UI polls every 2s, so a 3s
+# cache meant a pick could sit invisible for 8s (5s poll + 3s cache) even
+# though Sleeper already knew about it. One second still collapses the burst
+# from several open screens without adding meaningful lag.
 CACHE_TTL_SECONDS = 1.0
 
 
@@ -32,6 +38,7 @@ def _get(url: str, ttl: float = CACHE_TTL_SECONDS) -> Any:
 
 
 def reset_cache() -> None:
+    """Drop the in-memory copy. For tests."""
     _CACHE.clear()
 
 
@@ -40,11 +47,27 @@ def get_draft(draft_id: str, fresh: bool = False) -> dict[str, Any]:
 
 
 def seasons_to_scan(today: dt.date | None = None) -> list[str]:
+    """Which seasons to look for leagues in.
+
+    The current calendar year plus the one before it. A draft in August 2026 and
+    last year's completed draft are both worth reaching; anything older is
+    history, not something you are about to draft in.
+    """
     year = (today or dt.date.today()).year
     return [str(year), str(year - 1)]
 
 
 def list_drafts(username: str | None) -> dict[str, Any]:
+    """Every league draft this user can reach, newest season first.
+
+    Built on /user/<id>/leagues, not /user/<id>/drafts: the latter returned an
+    empty list for a season whose draft demonstrably exists, while the leagues
+    endpoint carries draft_id directly and was correct for every season tried.
+
+    Mock drafts are absent by construction -- Sleeper attaches them to no
+    league, so no endpoint lists them. That is why the UI also needs a
+    paste-an-id box.
+    """
     if not username:
         return {"drafts": [], "detail": "SLEEPER_USERNAME is not set"}
 
@@ -78,11 +101,21 @@ def list_drafts(username: str | None) -> dict[str, Any]:
 
 
 def get_league_scoring(draft: dict[str, Any]) -> str:
+    """STD/PPR/HALF for the league this draft belongs to, so FantasyPros ADP can
+    be requested in the format that actually matches how the draft scores.
+
+    Mock drafts belong to no league (see AGENTS.md), so there is nothing to
+    look up; a league fetch can also simply fail. Both fall back to
+    config.fantasypros_scoring_fallback() rather than raising -- a scoring
+    format guess must never be what breaks the board.
+    """
     league_id = draft.get("league_id")
     if not league_id:
         return config.fantasypros_scoring_fallback()
 
     try:
+        # Scoring settings do not change mid-draft, so this can be cached far
+        # longer than the 1s default without ever showing stale data.
         league = _get(f"{sleeper.BASE_URL}/league/{league_id}", ttl=3600.0)
     except Exception:
         return config.fantasypros_scoring_fallback()
@@ -103,6 +136,12 @@ def get_picks(draft_id: str, fresh: bool = False) -> list[dict[str, Any]]:
 
 
 def slot_on_the_clock(pick_no: int, teams: int) -> int:
+    """Which draft slot owns `pick_no` (1-based) in a snake draft.
+
+    Odd rounds run 1..teams, even rounds run teams..1. Getting this wrong is
+    invisible in round 1 and wrong for every round after it, which is why it is
+    a separate function with its own tests.
+    """
     index = (pick_no - 1) % teams
     rnd = ((pick_no - 1) // teams) + 1
     return index + 1 if rnd % 2 == 1 else teams - index
@@ -113,6 +152,7 @@ def round_of(pick_no: int, teams: int) -> int:
 
 
 def next_pick_for_slot(after_pick_no: int, slot: int, teams: int, rounds: int) -> int | None:
+    """The first pick at or after `after_pick_no` belonging to `slot`."""
     last = teams * rounds
     for pick_no in range(max(after_pick_no, 1), last + 1):
         if slot_on_the_clock(pick_no, teams) == slot:
@@ -121,6 +161,12 @@ def next_pick_for_slot(after_pick_no: int, slot: int, teams: int, rounds: int) -
 
 
 def _resolve_slot(draft: dict[str, Any], username: str | None) -> tuple[int | None, str | None]:
+    """Find the user's draft slot, or explain why we can't.
+
+    A mock draft has an empty draft_order until it starts, so before the first
+    pick there is genuinely nothing to resolve -- say so rather than silently
+    defaulting to slot 1 and rendering someone else's roster as yours.
+    """
     override = config.draft_slot_override()
     if override:
         return override, None
@@ -142,6 +188,12 @@ def _resolve_slot(draft: dict[str, Any], username: str | None) -> tuple[int | No
 
 
 def build_state(draft_id: str, username: str | None = None, fresh: bool = False) -> dict[str, Any]:
+    """Everything the UI needs about the draft as it stands right now.
+
+    `fresh=True` skips the read cache entirely. That is what the manual refresh
+    button uses -- a button that could hand back a cached answer is worse than
+    no button, because you cannot tell the difference from the outside.
+    """
     draft = get_draft(draft_id, fresh=fresh)
     if not draft or not draft.get("draft_id"):
         return {"error": "draft_not_found", "draft_id": draft_id}
@@ -163,14 +215,12 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
         meta = pick.get("metadata") or {}
         position = meta.get("position")
         if position in roster:
-            round_no = pick.get("round")
             roster[position].append(
                 {
                     "name": f"{meta.get('first_name', '')} {meta.get('last_name', '')}".strip(),
                     "team": meta.get("team"),
-                    "round": round_no,
+                    "round": pick.get("round"),
                     "pick_no": pick.get("pick_no"),
-                    "strength_contribution": strength.contribution_for_round(round_no),
                 }
             )
 
@@ -185,9 +235,10 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
     current_round = round_of(on_the_clock_no, teams) if on_the_clock_no else rounds
     checkpoint = plan_module.checkpoint_for_round(active_plan, current_round)
     checkpoint_view = None
-    still_needed: dict[str, int] = {}
     if checkpoint is not None:
         minimums = checkpoint["minimums"]
+        # Cumulative totals, so "still needed" is the shortfall against the
+        # roster you already hold, not a count of picks to spend.
         still_needed = {
             pos: max(0, req - counts.get(pos, 0)) for pos, req in minimums.items() if req
         }
@@ -210,8 +261,6 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
                 else None
             ),
         }
-
-    strength_by_position = strength.summarize_roster(roster, still_needed)
 
     return {
         "draft_id": draft_id,
@@ -237,7 +286,6 @@ def build_state(draft_id: str, username: str | None = None, fresh: bool = False)
         "picks_until_my_turn": (my_next - on_the_clock_no if my_next and on_the_clock_no else None),
         "my_roster": roster,
         "my_counts": counts,
-        "my_strength": strength_by_position,
         "checkpoint": checkpoint_view,
         "plan_name": active_plan.get("name"),
         "recent_picks": [
