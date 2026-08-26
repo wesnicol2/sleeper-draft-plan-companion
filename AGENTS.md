@@ -1,408 +1,358 @@
 # AGENTS.md — why this repo is shaped the way it is
 
-The deep document. `README.md` covers how to use the app and `CONTRIBUTING.md`
-covers process; this file holds the reasoning behind the code — the design
-decisions, the constraints they answer to, and the things that were tried and
-rejected. There is no length limit here. If you are about to write a paragraph
-of rationale in a code comment or in the README, it probably belongs here.
+`README.md` describes the application as it exists. `CONTRIBUTING.md` describes
+how work moves through the repository. This file records architectural reasons,
+constraints, important failure modes, and history that future contributors
+should not have to rediscover.
 
 ## Which docs an agent may change
 
-The documents in this repo are not equally open to edit. An assistant working
-here should treat them as two tiers.
-
-**Keep current as you go — `README.md` and `AGENTS.md`.** If a change you make
-contradicts something either file says, update it in the same commit. A change
-that alters how someone runs or uses the app belongs in the README; a change
-that alters why the code is shaped the way it is belongs here. This is not
-optional tidying: a doc that describes an app that no longer exists is exactly
-how a repo rots, and the next reader has no way to tell that a stale sentence is
-stale. Do not leave it for a follow-up.
+**Keep current as you go — `README.md` and `AGENTS.md`.** A behavior change that
+makes either file inaccurate must update it as part of the same feature work.
 
 **Do not touch without explicit human approval — `CONTRIBUTING.md` and
-`docs/*.md`.** These are the contracts. One defines how work moves through the
-repo, the others define what the system is supposed to do; the rest of the repo
-is measured against them, so an agent editing them unasked is an agent quietly
-moving the goalposts it is being judged by. Ask first and get a clear yes, every
-time. This holds on a `dev/` branch as much as anywhere else — being unmerged is
-not permission, because review is precisely where an unrequested change to a
-contract is easiest to wave through. If work seems to require changing one of
-them, say so, propose the specific edit and wait.
-
-The asymmetry is deliberate. Getting a stale README fixed is cheap and the
-downside of not fixing it is real; changing a contract is cheap to do and
-expensive to notice.
-
----
+`docs/*`.** They are human-owned process/planning contracts. Implementation is
+measured against them; an agent must not move those goalposts itself.
 
 ## The core idea
 
-A fantasy draft gives you roughly ninety seconds to answer a question with a lot
-of moving parts: given what I have already drafted, what my plan says I still
-need, and who is actually left on the board, who should I take? Doing that by
-scrolling a rankings list under a clock is how people end up with four running
-backs and no tight end.
+A live fantasy draft gives the user very little time to combine roster state,
+plan constraints, player availability, and draft timing. The app therefore runs
+as a second screen and updates automatically. Draft-time interaction is treated
+as a cost: the useful state should already be visible when the user looks at it.
 
-This app answers it continuously on a second screen. It knows the draft plan
-(config, never hardcoded), it watches the live draft through the Sleeper API,
-and it renders a grid of the best available players per position — reordered so
-the position you most need is furthest left. It takes no input during the draft.
-Any interaction it requires is a design failure, because attention during a pick
-is the scarce resource the whole thing exists to protect.
+The checkpoint plan is useful scaffolding and remains authoritative for its own
+positional minimums. New recommendation logic should be layered beside it until
+there is evidence that the newer model handles positional need and timing
+better. Replacing checkpoints is not an incidental refactor.
 
-The specs it is built against live in
-[`docs/draft-companion-planning/`](docs/draft-companion-planning/):
-`draft-companion-plans.txt` (scope and MVP), `draft-plan.txt` (the draft strategy
-itself), `draft-companion-ui-description.txt` (the grid layout), and the drawio
-mockups under `UI Mockups/`.
+## Current architecture
 
-## Architecture decisions
+The service is intentionally small:
+
+- `api.py` is a stdlib WSGI application and static-file server.
+- `sleeper.py` owns Sleeper HTTP access and player caching.
+- `draft.py` turns picks into roster state and projected snake-draft timing.
+- `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
+  Sleeper player IDs.
+- `plan.py` loads checkpoint configuration.
+- `board.py` assembles the 32-player board, future-pick markers, and joined ADP/plan context.
+- `decision.py` owns two-pick Cost of waiting context.
+- `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
+
+The board renderer does not own ranking or recommendation logic. Server payloads
+arrive already ordered/explained so later ranking models can change without
+quietly creating a second algorithm in JavaScript.
+
+## Architectural decisions
 
 ### The draft plan is configuration, not code
 
-`draft-plan.txt` describes checkpoints — round ranges with per-position minimums
-("by end of R6: RB >= 2, WR >= 2"). Those live in a config file the user edits,
-not in Python. The plan changes between seasons and between leagues, and every
-year it is baked into a branch is a year the app is wrong until someone opens an
-editor.
+Checkpoint requirements change between seasons and leagues. The packaged
+`draft_plan.json` is a default; a mounted override can replace it without a
+build. Minimums are cumulative roster totals by the end of a checkpoint.
 
-### Defense and kicker are out of scope, so the plan stops at round 14
+A malformed override must not take down the board during a live draft. The plan
+loader falls back to the packaged plan and surfaces the override error.
 
-`docs/draft-companion-planning/draft-plan.txt` round 15 is "draft the defense
-with the easiest matchup (opponent has lowest implied team total)". The shipped
-plan config deliberately does not implement it, and `plan.checkpoint_for_round`
-returns None for round 15 rather than inventing a rule.
+### Defense and kicker remain outside the board
 
-This is a knowing divergence from a spec document. It is recorded here rather
-than by editing the spec, because `docs/*` are contracts an assistant must not
-change unasked -- the spec keeps saying what the system should eventually do,
-and this file says what the code does.
+The board tracks QB/RB/WR/TE. The shipped checkpoint plan therefore stops before
+the defense-specific final-round strategy. Adding defense is not merely another
+column: the planned selection rule depends on implied team totals, which Sleeper
+does not supply.
 
-Two things stand between here and implementing it. The board has four columns
-per the UI spec, so DEF needs a fifth column or a footer row; and "lowest
-implied team total" is odds data, which Sleeper does not provide at all. It is
-a data-source problem, not just a layout one.
+The validator rejects checkpoint minimums for positions the board does not
+track rather than presenting a need that can never be satisfied.
 
-The plan validator rejects a minimum for any position the board does not track,
-so a hand-edited config asking for `DEF` fails loudly instead of leaving the
-board claiming a need that can never be satisfied.
+### Column order is two bands
 
-### Column order is two bands, not one sort key
+Positions with unmet checkpoint minimums come first, ordered by largest
+shortfall. Positions whose minimums are already met follow, ordered by fewest
+players rostered. A fixed RB/WR/TE/QB order is the final tie-break.
 
-The mockup states it as "position with the most needs is moved all the way to
-the left - if all needs are met, the weakest position is moved to the left".
-The trap is reading "weakest" as a global second key. It is not: it only
-applies among positions with no outstanding need.
+That fixed tie-break matters: the board must not visibly reshuffle because of
+dictionary iteration when the underlying draft state has not changed.
 
-  1. positions still short, biggest shortfall first
-  2. then positions already met, fewest drafted first
-  3. fixed order RB/WR/TE/QB as the final tie-break
+### The ranked horizon is fixed at 32 available players
 
-The mockup proves the distinction. In the state it depicts, RB (needs 1, holds
-3) and TE (needs 1, holds 0) tie on need, and it puts **RB** first -- the
-opposite of weakest-first. A single sort key with "fewest drafted" second
-produces TE, RB, QB, WR and is wrong.
+Checkpoint timing used to control the number of ranked rows. That made the board
+shrink exactly when the user wanted to compare present choices against future
+availability. The ranked band now always shows up to 32 available players,
+independent of checkpoint length. Checkpoints still control needs/highlighting;
+they no longer control the board's look-ahead horizon.
 
-The third key exists so the order cannot depend on dict iteration. Columns that
-reshuffle between polls read as the board glitching on a screen you are only
-glancing at.
+### Static CSV ADP is canonical
 
-### Rows shown = picks left in the checkpoint
+The current canonical rank is the integer rank in `resources/adp.csv`.
+`adp.build_adp_index()` matches CSV records onto Sleeper player IDs using
+normalized name and position, using team only to resolve duplicate names.
+Ambiguous or unmatched records are skipped rather than guessed.
 
-Not a top-N. The mockup ends its list at "the total number of picks left in
-this checkpoint", which is the set of players you could still realistically
-take before the plan's next gate. When there is no active checkpoint -- past
-round 14, or before the draft starts -- it falls back to one round.
+The existing ranked board can fall back to Sleeper `search_rank` for a player
+without a static-ADP match. That fallback is explicitly visible through
+`rank_source`/`rank_value` and `/rankings`.
 
-Players with neither an ADP match nor a `search_rank` are excluded rather than
-sorted last. A player no source has an opinion about is one padding the board
-with would crowd out real options.
+The **Cost of waiting model does not use that fallback**. Its numeric comparison
+is specifically defined in terms of canonical static ADP, so a candidate with
+missing ADP gets an unavailable cost. Silently mixing `search_rank` into the
+same subtraction would make the number meaningless.
 
-### ADP comes from FantasyPros, not Sleeper, and `search_rank` is the fallback
+### FantasyPros is retired from the live ranking path
 
-The UI spec says to rank undrafted players by "Sleeper ADP". Sleeper's public API
-does not expose ADP at all -- confirmed against `docs.sleeper.com`, which lists
-every endpoint and none carries it. `draft-companion-ui-description.txt` line 9
-is therefore asking for something that cannot literally be fetched from Sleeper;
-this is a knowing divergence recorded here rather than by editing that spec, the
-same pattern as "Defense and kicker are out of scope" above. The wording tweak
-this implies -- "ADP" rather than "Sleeper ADP" -- has been proposed to the repo
-owner but not applied, since `docs/*` needs explicit sign-off to change.
+Earlier versions attempted to obtain ADP from FantasyPros. That work exposed
+several useful failure modes: the free response was heavily capped, positional
+filters changed the meaning of returned rank values, and mocked tests could
+validate internally consistent fixtures while the real cross-position ordering
+was wrong. The repository retains the historical client code for now, but the
+live board's canonical ADP path is static CSV and does not require a FantasyPros
+key.
 
-Ranking is `board.ranked_pool()`'s `adp_index` argument: FantasyPros consensus
-rankings (`fantasypros.py`), matched onto Sleeper player IDs by name since
-FantasyPros carries no Sleeper ID crosswalk (`fantasypros.build_adp_index()` --
-normalized name + position, team as a tiebreaker on collision, unresolved
-collisions and non-matches dropped rather than guessed). ADP-matched players
-always rank ahead of `search_rank`-only players when both are present.
+Do not reintroduce an external ranking provider directly into board logic. The
+planned ranking abstraction should come first so provider failure, licensing,
+caching, and source identity remain isolated.
 
-This stays optional, not required, on purpose:
+### `/rankings` exists because ordering must be inspectable
 
-- **No FantasyPros key configured** -- the common case until the repo owner
-  provides one -- ranks by `search_rank` alone, exactly as before this change.
-- **The key is present but the call fails** (network, bad key, daily budget
-  spent) degrades the same way, reported in `/board`'s `adp_error` rather than
-  `board_error`. `board_error` means the board itself is broken (no players at
-  all); a missing or failed *enrichment* source is not that.
-- **A player FantasyPros doesn't rank, or that fails to name-match**, falls
-  back to their own `search_rank` individually rather than being dropped.
+A wrong-looking row is otherwise impossible to diagnose. Every ranked player
+carries the source and raw value that determined its position, and `/rankings`
+exposes those values and tie information. A debugging view must call the same
+ordering code as the board; duplicating the sort would allow the explanation to
+disagree with the behavior it is supposed to explain.
 
-FantasyPros' free tier is 50 calls/day, which is not a lot of headroom against
-something polled every 2-10s. Two independent things keep this nowhere close:
-`fantasypros.load_adp()` caches to memory then disk with a TTL that defaults to
-a day (same shape as `sleeper.load_players()`), and `build_board()` never wires
-the manual-refresh `fresh=1` through to it, unlike live draft state -- ADP has
-no reason to skip its own cache on a refresh, and doing so would be a direct
-path around the budget. A second, persisted daily call-budget counter
-(`fantasypros_daily_call_limit()`, default 40) is a hard stop on top of that,
-in case either assumption above ever turns out to be wrong.
+### Draft timing is deterministic snake arithmetic
 
-### `rank_ave` is relative to the position filter, so ask for `position=ALL`
+`draft.slot_on_the_clock()` and `draft.next_pick_for_slot()` are deliberately
+separate functions. Snake logic is easy to get right in round one and wrong in
+every even round. The board walks that same function repeatedly to expose the
+user's next two scheduled selections rather than estimating future picks from
+ADP.
 
-The first cut of this fetched one call per tracked position and used each
-player's `rank_ave`. That is wrong, and wrong in a way unit tests could not
-catch, because the mocked values looked fine. Against the live API, ask for
-`position=WR` and Ja'Marr Chase comes back at **1.00**; ask for `position=ALL`
-and he is **3.00**. `rank_ave` is the average draft slot *within whatever slice
-you requested*, so a per-position call returns positional rank wearing ADP's
-clothing.
+Mock drafts may not publish a usable draft order before they start, which is why
+`SLEEPER_DRAFT_SLOT` exists as an explicit override instead of silently assuming
+slot 1. A real Test session also showed that some active mocks can still leave
+the user slot unresolved. Once the configured user has made a pick, `board.py`
+can safely recover the slot by matching the pick's `picked_by` user ID to its
+`draft_slot`. Before such evidence exists, the app still refuses to guess.
 
-The board orders rows across positions -- vertical position is rank, and one
-row is one rank. Feeding it positional values tied every position's #1 at ~1.0
-and floated the QB1 into the opening rows. Measured on real data: Josh Allen
-sorted to **row 3** under the broken version and **row 11** once fixed, which
-is the difference between a board that suggests a round-1 quarterback and one
-that doesn't. So `load_adp()` makes a single `position=ALL` call and reads each
-record's own `player_position_id`. That also costs one call instead of four.
+### Draft discovery goes through leagues; mocks cannot be enumerated
 
-The free tier caps every response at 10 players, confirmed live and not
-overridable by the `limit` param (asked for 200, got 10). So real-ADP coverage
-is the top ~10 overall, which today is entirely RB and WR -- **no QB or TE gets
-a real ADP at all**, and neither does anyone past pick ~11. Everyone else falls
-back to `search_rank`. That fallback is therefore load-bearing for most of the
-board rather than a rare edge case, and it is why `ranked_pool()` sorts
-ADP-matched players ahead of `search_rank`-only ones instead of trying to
-interleave two incomparable scales. Lifting the cap needs a paid tier; the same
-response reports `count: 669` available.
+Sleeper league objects carry draft IDs reliably. Mock drafts belong to no league
+and are not discoverable through the user league list, so the UI keeps a
+paste-an-ID path. Selected draft ID lives in the URL/localStorage; the server
+remains stateless and `SLEEPER_DRAFT_ID` is only the default.
 
-The scoring format (STD/PPR/HALF) requested from FantasyPros is resolved
-per-draft from the actual league, not hardcoded: `draft.get_league_scoring()`
-reads the draft's `league_id`, then that league's `scoring_settings.rec` (1+ ->
-PPR, 0.5 -> HALF, else STD). Mock drafts belong to no league and so have
-nothing to resolve; a lookup failure falls back the same way -- both use
-`FANTASYPROS_SCORING`, a plain env var, since nothing else in this app knows a
-league's scoring settings today.
+### Polling follows the draft
 
-### `/rankings` exists because a wrong order is otherwise unarguable
+Live draft reads are short-cache data. The UI polls rapidly while drafting and
+less often otherwise. Manual Refresh bypasses the live read cache; a refresh
+button that can knowingly return the same cached state is misleading.
 
-The board shows a name in a slot and nothing about how it got there. "Josh
-Allen is too high" then has no next step — you cannot tell a bad ranking source
-from a bug in the sort from an arbitrary tie-break. So every ranked row carries
-`rank_source` and `rank_value`, and `/rankings` puts both candidate values side
-by side with a tie count.
+The full Sleeper player payload is large and changes slowly, so it is cached far
+more aggressively than picks.
 
-It answers the actual question immediately: Josh Allen sits third because
-Sleeper's `search_rank` for him is 3. That field behaves more like search
-popularity than draft position, which is the case for ADP in one line.
+## Cost of waiting — MVP reasoning
 
-The tie count is the part worth keeping. `search_rank` duplicates heavily --
-three different players share rank 4 in the 2026 pool, two share 5, two share 7
--- and `ranked_pool` breaks every tie on `player_id`, which is arbitrary. That
-was invisible before: the board looked like a confident total ordering when
-parts of it were a coin flip. A row with `ties > 1` is there partly by luck.
+This feature is intentionally **decision context**, not a master player score.
+The question is narrow:
 
-`explain_rankings` calls the same `ranked_pool` the board does, and both take
-their ADP through the shared `adp_index_for`, rather than re-deriving either.
-A debug view that can disagree with the thing it explains is worse than none,
-because it sends you looking for a bug in whichever one you trust less.
+> If I pass on this player, what same-position option does static ADP suggest I
+> could still have at each of my next two scheduled selections, and how far down
+> the ADP list are those fallback options?
 
-It is a separate endpoint rather than extra UI because of "no user interaction
-during the draft" -- the grid stays the thing you glance at, and this is the
-thing you read when the grid looks wrong.
+For each QB/RB/WR/TE, `decision.build_decision_context()` receives only data the
+application already has: available players, drafted IDs, canonical static ADP,
+current overall pick, the user's next two projected picks, checkpoint shortfall,
+and the candidates currently displayed by the board.
 
-### Draft discovery goes through leagues, and mocks can't be discovered at all
+### Availability assumption
 
-`/v1/user/<id>/leagues/nfl/<season>` carries `draft_id` on each league and was
-correct for every season tried. `/v1/user/<id>/drafts/nfl/<season>` was not --
-it returned an empty list for a season whose draft demonstrably existed, so the
-picker is built on the leagues endpoint.
+For each projected user pick, a player is treated as plausibly available when:
 
-Mock drafts are attached to no league and appear under neither user endpoint,
-even when their own metadata names a league. There is no way to enumerate them,
-which is why the picker ships with a paste-an-ID box rather than treating that
-as a nicety.
+`static ADP rank >= projected user pick`
 
-The chosen draft lives in the URL (`?draft_id=`) and localStorage rather than on
-the server. It keeps the server stateless, lets two screens follow different
-drafts, and makes a selection shareable. `SLEEPER_DRAFT_ID` remains the default
-when nothing is chosen.
+The **position-level fallback** for that pick is the best undrafted
+same-position player satisfying that rule. This is deliberately simple. It is
+not a probabilistic survival model. The assumption is returned in
+`decision_rules` and displayed in the UI so later work can replace it without
+pretending the current model is more sophisticated than it is.
 
-### Poll rate follows the draft, and the button skips the cache
+For an individual candidate at either projected pick:
 
-The first cut polled every 5s with a 3s server cache, which meant a pick could
-sit invisible for 8s even though Sleeper already knew about it. The two numbers
-compounded, and the cache being longer than half the poll interval was the
-larger mistake.
+- if the candidate's own ADP is already at or after that projected pick, the
+  candidate is its own fallback;
+- otherwise the candidate uses the position-level fallback for that projected
+  pick;
+- if no such fallback exists, the cost remains unavailable rather than being
+  fabricated.
 
-Now the poll is 2s while `status == "drafting"` and 10s otherwise, and the
-server cache is 1s. A completed or unstarted draft changes nothing, so polling
-it hard is pure waste; a live one is the whole point. Worst case during a draft
-is about 3s.
+The best static-ADP player currently available at each position is marked
+`is_best_now`. The same positional anchor is highlighted both in the detailed
+Cost of waiting table and directly on the main board.
 
-The Refresh button sends `?fresh=1` and bypasses the read cache entirely. A
-refresh button that could return a cached answer is worse than no button --
-from the outside you cannot distinguish that from the button being broken.
+### The MVP metric is ADP deterioration, not player value
 
-This does not contradict "no user interaction during the draft". The button is
-an escape hatch for when you do not trust what you are seeing; the design still
-assumes you never touch it.
+For a candidate with a usable fallback:
 
-### The grid is placed explicitly, not flowed
+`ADP loss if waiting = fallback ADP rank - candidate ADP rank`
 
-Every cell in the board carries its own `grid-row` and `grid-column`. The
-obvious alternative -- emit cells in reading order and let CSS grid auto-flow
-place them -- breaks on the bands that span: the `DRAFTED` / `NEEDS` / `RANKED`
-gutter labels each span their whole band, and a "not required" box spans the
-needs band. Auto-flow pushes every later cell around a span, so one column
-being a row taller silently shifts everything after it. Explicit placement
-makes the layout a function of the payload rather than of emission order, and
-it is what lets blanks be rendered as real cells so the columns stay legible.
+Example: candidate ADP 10 and fallback ADP 30 produces `+20`.
 
-The ranked band puts **one player per row**, in their own position's column.
-That is the spec's "each row will only have one player, so each row represents
-one rank of undrafted player" -- read as one row per *rank*, not one row per
-position. The mockup's geometry confirms it: its ranked boxes are staggered
-down the page at different heights per column, not aligned into rows of four.
-Worth stating because the mockup's box *labels* are inconsistent -- several
-drafted boxes carry duplicated or wrong text -- so its geometry is the source
-of truth there, not its captions.
+The calculation is performed separately for each of the user's next two picks,
+so the board can show the shape of near-term deterioration without pretending to
+model a full future value curve.
 
-### "How many draft plan criteria" means two things so far
+This number is **ordinal rank deterioration**. It is not the mathematical
+`Current Value - Future Value` from the long-term theory because static ADP rank
+is not a cardinal player-value scale and lower ranks are better. The code and UI
+must not describe `+20 ADP` as 20 units of fantasy value lost.
 
-The MVP is defined as a board where "players should be highlighted with
-different colors based on how many draft plan criteria they have". The spec
-never says what a criterion *is*, and the ones it does list elsewhere -- team
-synergy, RB handcuffs, bye-week collisions, new coach or new QB -- all need
-data Sleeper does not return. Bye weeks are not in the player payload at all.
+For the same reason, the MVP does not compute `(current - future) / current` as a
+scarcity percentage. Doing that with raw ordinal ranks would create a precise-
+looking percentage without a defensible value interpretation.
 
-So `board.CRITERIA` starts with the two the plan already knows: the player
-fills a position the checkpoint is still short of, and the player matches the
-checkpoint's `lean`. That gives a real 0/1/2 ramp today rather than a binary,
-and the remaining criteria drop into the same tuple when their data source
-exists.
+### No urgency buckets yet
 
-`criteria_max` is in the payload for exactly that reason. The UI colours by
-`criteria / criteria_max`, so adding a third criterion widens the ramp instead
-of scoring off the top of a hardcoded scale.
+An earlier implementation mapped ADP deterioration into `Can wait`, `Consider
+now`, and `Draft now` using fixed 5/12-rank thresholds and allowed checkpoint
+need to raise the bucket. That was removed before feature promotion because the
+thresholds were not empirically calibrated.
 
-Drafted players are not scored. Once someone is on your roster there is no
-decision left to inform, and colouring them would compete for attention with
-the players you are actually choosing between. Meeting zero criteria is left
-plain for the same reason -- if everything is highlighted, nothing is.
+The current MVP shows the numbers first. The user can compare candidate ADP,
+future fallbacks, and ADP loss directly. Future wait-safety categories should
+only be introduced after historical replay or other evidence supports useful
+thresholds.
 
-### The frontend never re-sorts
+### Checkpoint need is separate context
 
-`script.js` treats `/board`'s `columns` and `ranked` as opaque and already
-ordered. It does not read `search_rank`, does not re-sort, and does not score
-players. Ordering is entirely a server-side decision.
+Checkpoint shortfall remains visible beside the cost-of-waiting table but does
+not alter the candidate's ADP loss. This preserves two separate facts:
 
-This is deliberate headroom. The spec's NEXT STEPS ask for rankings that can be
-manually set or adjusted, chosen from several sources (ADP or WAR), and pulled
-from an external service for better fidelity. Every one of those changes what
-fills `ranked`, and none of them should require touching the renderer. The same
-reasoning keeps the highlighting score separate from whatever produces the
-ordering, so ranking and highlighting can change independently.
+1. what static ADP suggests will happen if the position is deferred;
+2. what the existing checkpoint plan says the roster still needs.
 
-Pulling ADP from FantasyPros (see "ADP comes from FantasyPros, not Sleeper"
-above) is exactly the "pulled from an external service for better fidelity"
-step this section anticipated. It needed no change here -- `ranked` is still
-opaque, pre-ordered, and server-decided.
+A future model can combine those inputs explicitly. The MVP should not silently
+turn a roster need into a different opportunity-cost number.
 
-### Bye weeks need a source that isn't Sleeper
+### Safe degradation
 
-Bye-week collision highlighting is in the spec, but there is no bye-week field
-anywhere in the 50 keys `/v1/players/nfl` returns. It needs a season team -> bye
-map in config, or a second upstream. Worth knowing before that feature is
-started rather than halfway through it.
+Missing canonical ADP for a displayed candidate produces no ADP-loss number for
+that candidate. Missing projected user picks behave the same way. The model
+never silently switches ranking source just to avoid an empty value.
 
-### The player payload is big and must be cached
+Drafted and inactive players are excluded before best-now/fallback candidates
+are chosen. Static-ADP ties are settled by player ID so result ordering is
+deterministic across polls and dictionary insertion orders.
 
-`/v1/players/nfl` is ~14.6 MB covering ~12,200 players. Sleeper's own guidance is
-to fetch it at most once a day. It is cached to the mounted data volume and
-refreshed daily; the live draft endpoints, which are small, are polled often.
+### What the MVP does not attempt
+
+Do not smuggle later phases into this module. In particular, the MVP does not
+implement WAR, value above replacement, positional-strength weighting,
+automatic cliffs/dead zones, roster synergy, bye-week fit, offensive
+environment, handcuffs, injuries, coaching changes, teammate changes, or
+external ranking providers.
+
+Those signals should first exist independently and remain explainable before a
+unified recommendation model combines them.
+
+## Frontend decisions
+
+### The grid is explicitly placed
+
+Board cells carry explicit grid row/column placement because band labels and
+“not required” boxes span multiple rows. CSS auto-flow around spans can shift
+later cells and make unrelated columns appear misaligned.
+
+The ranked band is one player per rank row in the player's own position column.
+The geometry, not frontend sorting, communicates cross-position order.
+
+### Future picks are overlaid on the board, not converted into rank
+
+The main board draws a horizontal marker before the first displayed canonical-
+ADP player whose ADP is at or after each projected user pick. That uses the same
+availability boundary as Cost of waiting. If a projected boundary is beyond the
+32 displayed players, the marker is placed at the bottom and explicitly labeled
+instead of silently disappearing.
+
+Each ranked cell also shows its canonical ADP and the two per-pick ADP-loss
+values supplied by the server. The frontend formats those values but does not
+recalculate fallback logic.
+
+### Highlighting and cost context are different concepts
+
+Existing ranked-player highlighting answers how many checkpoint criteria a
+player satisfies. Cost of waiting answers draft timing using static ADP. They are
+kept visually and structurally separate so a user can see both rather than
+having one unexplained color encode unrelated ideas.
+
+Within each cost-of-waiting position table and on the main board, the static-ADP
+best available player is explicitly marked. That is a positional anchor, not a
+recommendation to draft the player.
+
+### No draft-time controls for cost context
+
+The Cost of waiting panel updates automatically. There are no sliders, toggles,
+or manual ranking controls in the MVP because those would require attention
+during the exact moment the app is meant to reduce cognitive load.
 
 ## Deployment shape
 
-Two environments — Test (`:test`) and Production (`:latest`) — each pinned to its
-own GHCR tag, with Watchtower on the home server polling and recreating
-containers. CI never reaches into the server. The full model is in
-`CONTRIBUTING.md`; the reasoning for it is just that a pull-based deploy needs no
-inbound access to a home network and no credentials stored in GitHub beyond what
-the Actions token already provides.
+Two image tags represent environments:
 
-There is deliberately no per-`dev/*` environment. One shared tag across every dev
-branch means concurrent branches clobber each other's deploy, which makes the
-environment untrustworthy exactly when more than one thing is in flight. Dev
-branches still get full CI; they just don't deploy. Verification against a
-running app happens on Test.
+- feature branches publish `:test` for the Test environment;
+- `main` publishes `:latest` for Production.
 
-Registry auth uses the built-in `GITHUB_TOKEN` rather than a personal access
-token. A PAT would let one credential own packages across every repo, but it has
-to be added by hand before the first push to `main` can succeed — which is one
-more thing standing between a new repo and green CI. The tradeoff is that the
-published package is private to the repo by default, so the server needs its own
-pull credential; it needed one anyway.
+Dev branches run CI but do not deploy. That prevents multiple dev branches from
+fighting over a shared test tag. Promotion and validation rules are defined in
+`CONTRIBUTING.md` and must be followed rather than duplicated or relaxed here.
+
+CI does not need inbound access to the home server. The server pulls the image,
+which avoids storing home-network deployment credentials in GitHub Actions.
 
 ## Repo history worth not relearning
 
-<!-- Things that were tried and abandoned, and dead ends someone will otherwise
-     walk into a second time. Write these down when they happen, not later. -->
-
-- **FantasyPros' full API docs are key-gated, and what they do show is
-  incomplete.** The public `/api-data/` page names the `consensus-rankings`
-  endpoint and the `x-api-key` auth scheme, but not: that the endpoint
-  defaults to expert-consensus rankings and needs an undocumented
-  `type=ADP` query param to return actual ADP instead; that the ADP-worthy
-  field is `rank_ave` (a string like `"1.26"`), not `rank_ecr`; or that the
-  free tier hard-caps every response at 10 players regardless of a `limit`
-  param; or that `rank_ave` is scoped to the requested position filter. All
-  four were found by trial against a live key, not from docs -- see "ADP comes
-  from FantasyPros, not Sleeper" above.
-
-- **Mocked tests cannot validate a ranking source; only real data can.** The
-  per-position `rank_ave` bug above passed a green suite of 104 tests, because
-  every fixture supplied values that were self-consistent. It only surfaced
-  when the real endpoint was called and every position's #1 came back at ~1.0.
-  When changing what fills `ranked`, run it against the live API and eyeball
-  the resulting order before believing it -- a ranking that is plausibly
-  ordered but wrong is invisible to assertion-based tests.
+- **Sleeper's public player API does not provide the canonical ADP this app
+  needs.** Treating `search_rank` as ADP produces plausible-looking but
+  semantically wrong output. It is only an explicitly labeled board fallback.
+- **Ordinal ADP movement is not player-value loss.** The MVP may show that
+  waiting moves a candidate from ADP 10 to an ADP-30 fallback, but it must not
+  call that 20 units of fantasy value or derive a fake scarcity percentage from
+  it.
+- **Uncalibrated urgency thresholds are worse than raw evidence.** The first
+  5/12-rank Draft-now buckets were removed in favor of displaying the underlying
+  numbers until historical validation can justify thresholds.
+- **Real mock drafts exposed slot-resolution behavior that fixtures missed.** If
+  draft order is unusable but the configured user has already made a pick,
+  `picked_by` plus `draft_slot` is evidence sufficient to recover the slot. Do
+  not guess before that evidence exists.
+- **FantasyPros ranking experiments showed that source semantics matter more
+  than a green fixture suite.** Positional filtering changed returned rank
+  meaning and free-tier coverage was too incomplete to be a reliable canonical
+  source. Static CSV ADP replaced it.
+- **Mocked ranking tests cannot establish real ranking quality.** They can prove
+  determinism and transformations, not whether an upstream scale represents the
+  quantity its name suggests.
+- **A ranking/explanation path must share implementation with the real board.**
+  Otherwise a debug endpoint can confidently explain a different algorithm.
+- **A single shared dev deployment is unsafe.** Concurrent branches overwrite
+  one tag; only feature branches get the shared Test environment.
 
 ## Things deliberately not done
 
-- **No mypy, no ESLint.** Ruff only. See `CONTRIBUTING.md`.
-- **No web framework.** `sleeper_draft_plan_companion/api.py` is a stdlib WSGI
-  app, so there are zero runtime dependencies and the Docker layer cache stays
-  trivial. This is a starting point, not a position — add one the moment routing
-  or validation actually hurts.
-- **No frontend build step.** The UI is plain HTML, CSS and vanilla JS polling a
-  JSON endpoint. No npm, no bundler. It is one grid on one page; a toolchain
-  would cost more than it returns.
-- **No user interaction during the draft.** No filters, no search, no settings
-  panel. Everything the app shows is derived from the plan and the live draft
-  state. See "the core idea".
+- **No mypy, no ESLint.** Ruff is the Python lint/format gate.
+- **No web framework.** Stdlib WSGI remains sufficient for the current routing
+  and validation surface.
+- **No frontend build step.** Plain HTML/CSS/JavaScript is adequate for this
+  single-screen application.
+- **No required user interaction during a live draft.** Draft selection and
+  Refresh are setup/escape-hatch behaviors, not the normal decision loop.
 
 ## Open setup items
 
-Carried over from the new-repo checklist, which has otherwise been completed and
-deleted:
-
-- **`main` is not branch-protected.** Checklist step 5 (require a PR, require one
-  approving review). Deliberately left to the repo owner rather than enabled by
-  an assistant, since it governs review of that assistant's own work.
-- **Actions default workflow permissions are read-only.** The checklist says to
-  set them read/write. Publishing works anyway because `ci.yml` and `publish.yml`
-  request `packages: write` at job level, which is honoured regardless of the
-  default. Verified: the `publish` job succeeds and `:latest` is on GHCR.
-- **Host ports are 8082 (Production) and 8083 (Test).** The template's 8080/8081
-  defaults both collide on the target server, with gluetun and MeTube.
-- The GHCR package is **public**, so the server pulls it without a credential.
+- `main` is not branch-protected; enabling required PR/review protection remains
+  a repository-owner decision.
+- Production and Test default to host ports 8082 and 8083 respectively.
+- GHCR is the deployment handoff; feature CI publishing `:test` proves the image
+  was built/pushed, not that a private home-server Test container has already
+  pulled it. Runtime Test validation must therefore be reported separately from
+  CI publication.

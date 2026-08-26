@@ -1,0 +1,110 @@
+.board-best-now {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.08rem 0.28rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+
+.board-position-path {
+  display: block;
+  position: relative;
+  z-index: 8;
+  margin-top: 0.18rem;
+  padding-left: 0.38rem;
+  border-left: 2px solid currentColor;
+  font-size: 0.64rem;
+  font-weight: 750;
+  line-height: 1.2;
+  white-space: normal;
+}
+
+.board-position-path.ordinal-2 {
+  opacity: 0.68;
+  border-left-style: dashed;
+}
+
+.board-fallback-target {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+.board-fallback-badge {
+  display: inline-block;
+  position: relative;
+  z-index: 8;
+  margin: 0.16rem 0.22rem 0 0;
+  padding: 0.07rem 0.26rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.56rem;
+  font-weight: 800;
+  letter-spacing: 0.035em;
+}
+
+.board-fallback-badge.ordinal-2 {
+  border-style: dashed;
+  opacity: 0.74;
+}
+
+.board-fallback-rail {
+  position: relative;
+  z-index: 5;
+  width: 0;
+  justify-self: end;
+  margin-right: 0.42rem;
+  border-left: 3px solid currentColor;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.board-fallback-rail.ordinal-2 {
+  margin-right: 0.72rem;
+  border-left-style: dashed;
+  opacity: 0.32;
+}
+
+.board-pick-marker {
+  align-self: start;
+  position: relative;
+  z-index: 6;
+  height: 0;
+  border-top: 2px solid currentColor;
+  pointer-events: none;
+}
+
+.board-pick-marker span {
+  position: absolute;
+  right: 0.35rem;
+  top: -0.78rem;
+  padding: 0 0.3rem;
+  background: var(--card, #1c2028);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .board-position-path {
+    font-size: 0.6rem;
+  }
+
+  .board-best-now {
+    display: block;
+    width: fit-content;
+    margin: 0.15rem 0 0;
+  }
+
+  .board-fallback-badge {
+    font-size: 0.52rem;
+  }
+
+  .board-pick-marker span {
+    font-size: 0.56rem;
+  }
+}
