@@ -132,11 +132,7 @@ def application(environ: dict, start_response: Callable) -> Iterable[bytes]:
         return _respond(start_response, 405, {"error": "method not allowed"})
     handler = ROUTES.get(path.rstrip("/") or "/")
     if handler is not None:
-        query = {
-            k: v[0]
-            for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()
-            if v
-        }
+        query = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items() if v}
         try:
             return _respond(start_response, 200, handler(query))
         except Unavailable as exc:
