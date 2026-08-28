@@ -15,6 +15,13 @@ def test_market_value_uses_consensus_adp_power_curve():
     assert strength.market_value(0, 0.5) is None
 
 
+def test_bench_depth_weights_diminish_without_reaching_zero():
+    assert strength.bench_depth_weight(1) == pytest.approx(0.5)
+    assert strength.bench_depth_weight(2) == pytest.approx(1 / 3)
+    assert strength.bench_depth_weight(3) == pytest.approx(0.25)
+    assert strength.bench_depth_weight(10) > 0
+
+
 def test_targets_are_normalized_and_beta_tilts_target_not_player_value():
     consensus = {"q": 1, "r1": 2, "r2": 6, "w1": 3, "w2": 7, "t": 4}
     positions = {
@@ -45,7 +52,7 @@ def test_flex_pair_credits_are_proportional_and_sum_to_one_share():
     assert rb / (rb + wr) + wr / (rb + wr) == pytest.approx(1.0)
 
 
-def test_bench_only_candidate_adds_zero_strength():
+def test_bench_only_candidate_increases_strength():
     starters = {"QB": 1, "RB": 1, "WR": 0, "TE": 0, "FLEX": 0}
     consensus = {"r1": 1, "r2": 2, "r3": 3, "q": 4}
     positions = {"r1": "RB", "r2": "RB", "r3": "RB", "q": "QB"}
@@ -55,7 +62,39 @@ def test_bench_only_candidate_adds_zero_strength():
     impact = strength.candidate_strength(
         roster, player("r3", "RB"), current, 1, starters, consensus, positions, params
     )
-    assert impact["delta"] == pytest.approx(0.0)
+    assert impact["delta"] > 0
+
+
+def test_second_bench_player_gets_less_credit_than_first_at_same_value():
+    starters = {"QB": 0, "RB": 1, "WR": 0, "TE": 0, "FLEX": 0}
+    consensus = {"r1": 1, "r2": 4, "r3": 4}
+    roster = {
+        "QB": [],
+        "RB": [player("r1", "RB"), player("r2", "RB"), player("r3", "RB")],
+        "WR": [],
+        "TE": [],
+    }
+    contributions, credits = strength.roster_contributions(roster, starters, consensus, 0.5)
+    value = strength.market_value(4, 0.5)
+    assert credits["r2"] == pytest.approx(value * 0.5)
+    assert credits["r3"] == pytest.approx(value / 3)
+    assert contributions["RB"] == pytest.approx(1.0 + value * 0.5 + value / 3)
+
+
+def test_rb_wr_players_beyond_flex_get_diminishing_bench_credit():
+    starters = {"QB": 0, "RB": 1, "WR": 1, "TE": 0, "FLEX": 1}
+    consensus = {"r1": 1, "r2": 4, "r3": 9, "w1": 2, "w2": 5, "w3": 10}
+    roster = {
+        "QB": [],
+        "RB": [player("r1", "RB"), player("r2", "RB"), player("r3", "RB")],
+        "WR": [player("w1", "WR"), player("w2", "WR"), player("w3", "WR")],
+        "TE": [],
+    }
+    _contributions, credits = strength.roster_contributions(roster, starters, consensus, 0.5)
+    assert credits["r3"] == pytest.approx(strength.market_value(9, 0.5) * 0.5)
+    assert credits["w3"] == pytest.approx(strength.market_value(10, 0.5) * 0.5)
+    assert credits["r2"] > 0
+    assert credits["w2"] > 0
 
 
 def test_better_candidate_cannot_reduce_position_strength():
