@@ -46,14 +46,14 @@ def test_future_user_picks_follow_snake_order():
     assert board._future_user_picks(state) == [15, 34]
 
 
-def test_future_user_picks_include_current_pick_when_on_clock():
+def test_future_user_picks_exclude_current_pick_when_on_clock():
     state = {
         "my_slot": 10,
         "on_the_clock": {"pick_no": 10},
         "teams": 12,
         "rounds": 15,
     }
-    assert board._future_user_picks(state) == [10, 15]
+    assert board._future_user_picks(state) == [15, 34]
 
 
 def test_pick_markers_use_canonical_adp_boundary():
