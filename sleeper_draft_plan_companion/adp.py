@@ -49,7 +49,14 @@ def load_adp() -> list[dict[str, Any]]:
         return _MEMO
     rows = _read_rows()
     expected_header = [
-        "id", "Position", "Player", "Team", "Consensus", "Sleeper", "ESPN", "FantasyPros"
+        "id",
+        "Position",
+        "Player",
+        "Team",
+        "Consensus",
+        "Sleeper",
+        "ESPN",
+        "FantasyPros",
     ]
     if rows[0] != expected_header:
         raise ValueError(f"Unexpected ADP CSV header: {rows[0]!r}")
@@ -104,7 +111,9 @@ def _match_records(
         if len(candidates) == 1:
             matched = candidates[0]
         elif len(candidates) > 1 and record.get("team"):
-            team_matches = [pid for pid in candidates if players[pid].get("team") == record["team"]]
+            team_matches = [
+                pid for pid in candidates if players[pid].get("team") == record["team"]
+            ]
             if len(team_matches) == 1:
                 matched = team_matches[0]
         if matched is not None:
@@ -116,7 +125,10 @@ def build_adp_index(
     adp_records: list[dict[str, Any]], players: dict[str, Any]
 ) -> dict[str, int]:
     """Map Sleeper player IDs to canonical CSV rank for board ordering."""
-    return {player_id: int(record["rank"]) for record, player_id in _match_records(adp_records, players)}
+    return {
+        player_id: int(record["rank"])
+        for record, player_id in _match_records(adp_records, players)
+    }
 
 
 def build_consensus_index(
