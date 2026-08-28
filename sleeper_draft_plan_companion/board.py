@@ -178,9 +178,7 @@ def _attach_roster_player_ids(state, all_picks):
             player["player_id"] = by_pick.get(player.get("pick_no"))
 
 
-def _add_strength_context(
-    state, needs, players, consensus_index, parameters, draft_id, fresh
-):
+def _add_strength_context(state, needs, players, consensus_index, parameters, draft_id, fresh):
     roster = state.get("my_roster") or {}
     starters, starter_source = _roster_structure(draft_id, fresh=fresh)
     positions_by_player = {pid: player.get("position") for pid, player in players.items()}
@@ -195,9 +193,7 @@ def _add_strength_context(
     )
     summary = model["positions"]
     for position, position_summary in summary.items():
-        by_id = {
-            str(item.get("player_id") or ""): item for item in position_summary["players"]
-        }
+        by_id = {str(item.get("player_id") or ""): item for item in position_summary["players"]}
         for rostered in roster.get(position, []):
             detail = by_id.get(str(rostered.get("player_id") or ""))
             if detail:
@@ -246,9 +242,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     taken = {pick["player_id"] for pick in all_picks if pick.get("player_id")}
     _infer_mock_slot(state, all_picks, username)
     _attach_roster_player_ids(state, all_picks)
-    rank_index, consensus_index, adp_error = adp_indexes_for(
-        draft_id, players, fresh=fresh
-    )
+    rank_index, consensus_index, adp_error = adp_indexes_for(draft_id, players, fresh=fresh)
     if adp_error:
         state["adp_error"] = adp_error
     parameters = strength.parse_parameters(strength_parameters)
@@ -261,9 +255,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     state["my_next_pick_no"] = future_picks[0] if future_picks else None
     current_pick = (state.get("on_the_clock") or {}).get("pick_no")
     state["picks_until_my_turn"] = (
-        future_picks[0] - current_pick
-        if future_picks and current_pick is not None
-        else None
+        future_picks[0] - current_pick if future_picks and current_pick is not None else None
     )
     lean = (checkpoint or {}).get("lean")
     ranked = ranked_pool(players, taken, rows, rank_index)

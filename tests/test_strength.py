@@ -26,9 +26,7 @@ def test_targets_are_normalized_and_beta_tilts_target_not_player_value():
         "t": "TE",
     }
     starters = {"QB": 1, "RB": 1, "WR": 1, "TE": 1, "FLEX": 1}
-    neutral = strength.build_targets(
-        1, starters, consensus, positions, strength.ModelParameters()
-    )
+    neutral = strength.build_targets(1, starters, consensus, positions, strength.ModelParameters())
     tilted = strength.build_targets(
         1, starters, consensus, positions, strength.ModelParameters(beta_RB=1.2)
     )
@@ -36,7 +34,7 @@ def test_targets_are_normalized_and_beta_tilts_target_not_player_value():
     assert sum(neutral["neutral_targets"].values()) == pytest.approx(1.0)
     assert sum(tilted["adjusted_targets"].values()) == pytest.approx(1.0)
     assert tilted["adjusted_targets"]["RB"] > neutral["adjusted_targets"]["RB"]
-    assert strength.market_value(2, 0.5) == pytest.approx(2 ** -0.5)
+    assert strength.market_value(2, 0.5) == pytest.approx(2**-0.5)
 
 
 def test_flex_pair_credits_are_proportional_and_sum_to_one_share():
@@ -53,9 +51,7 @@ def test_bench_only_candidate_adds_zero_strength():
     positions = {"r1": "RB", "r2": "RB", "r3": "RB", "q": "QB"}
     roster = {"QB": [], "RB": [player("r1", "RB")], "WR": [], "TE": []}
     params = strength.ModelParameters()
-    current = strength.summarize_roster(
-        roster, {}, 1, starters, consensus, positions, params
-    )
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
     impact = strength.candidate_strength(
         roster, player("r3", "RB"), current, 1, starters, consensus, positions, params
     )
@@ -68,9 +64,7 @@ def test_better_candidate_cannot_reduce_position_strength():
     positions = {"r1": "RB", "r2": "RB"}
     roster = {"QB": [], "RB": [player("r1", "RB")], "WR": [], "TE": []}
     params = strength.ModelParameters()
-    current = strength.summarize_roster(
-        roster, {}, 1, starters, consensus, positions, params
-    )
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
     impact = strength.candidate_strength(
         roster, player("r2", "RB"), current, 1, starters, consensus, positions, params
     )
@@ -84,9 +78,7 @@ def test_missing_consensus_adp_is_explicitly_unavailable():
     positions = {"q1": "QB", "q2": "QB"}
     roster = {"QB": [], "RB": [], "WR": [], "TE": []}
     params = strength.ModelParameters()
-    current = strength.summarize_roster(
-        roster, {}, 1, starters, consensus, positions, params
-    )
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
     impact = strength.candidate_strength(
         roster, player("q2", "QB"), current, 1, starters, consensus, positions, params
     )
