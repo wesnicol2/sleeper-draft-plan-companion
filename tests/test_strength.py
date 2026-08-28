@@ -3,55 +3,97 @@ import pytest
 from sleeper_draft_plan_companion import board, strength
 
 
-def test_contribution_uses_inverse_square_round_weighting():
-    assert strength.contribution_for_round(1) == pytest.approx(1.0)
-    assert strength.contribution_for_round(2) == pytest.approx(0.25)
-    assert strength.contribution_for_round(3) == pytest.approx(1 / 9)
-    assert strength.contribution_for_round(10) == pytest.approx(0.01)
-    assert strength.contribution_for_round(15) == pytest.approx(1 / 225)
+def player(pid, position, name=None):
+    return {"player_id": pid, "position": position, "name": name or pid}
 
 
-def test_contribution_degrades_safely_for_missing_or_invalid_round():
-    assert strength.contribution_for_round(None) == 0.0
-    assert strength.contribution_for_round(0) == 0.0
-    assert strength.contribution_for_round("bad") == 0.0
+def test_market_value_uses_consensus_adp_power_curve():
+    assert strength.market_value(1, 0.5) == pytest.approx(1.0)
+    assert strength.market_value(4, 0.5) == pytest.approx(0.5)
+    assert strength.market_value(100, 0.5) == pytest.approx(0.1)
+    assert strength.market_value(None, 0.5) is None
+    assert strength.market_value(0, 0.5) is None
 
 
-def test_summarize_roster_exposes_position_total_player_contributions_and_need():
-    roster = {
-        "RB": [
-            {"name": "Early RB", "round": 1, "pick_no": 5},
-            {"name": "Late RB", "round": 5, "pick_no": 53},
-        ],
-        "WR": [{"name": "WR", "round": 2, "pick_no": 20}],
-        "QB": [],
-        "TE": [],
+def test_targets_are_normalized_and_beta_tilts_target_not_player_value():
+    consensus = {"q": 1, "r1": 2, "r2": 6, "w1": 3, "w2": 7, "t": 4}
+    positions = {
+        "q": "QB",
+        "r1": "RB",
+        "r2": "RB",
+        "w1": "WR",
+        "w2": "WR",
+        "t": "TE",
     }
+    starters = {"QB": 1, "RB": 1, "WR": 1, "TE": 1, "FLEX": 1}
+    neutral = strength.build_targets(1, starters, consensus, positions, strength.ModelParameters())
+    tilted = strength.build_targets(
+        1, starters, consensus, positions, strength.ModelParameters(beta_RB=1.2)
+    )
 
-    result = strength.summarize_roster(roster, {"WR": 1, "TE": 1})
-
-    assert result["RB"]["strength"] == pytest.approx(1.04)
-    assert result["RB"]["count"] == 2
-    assert result["RB"]["still_needed"] == 0
-    assert result["RB"]["players"][0]["contribution"] == pytest.approx(1.0)
-    assert result["RB"]["players"][1]["contribution"] == pytest.approx(0.04)
-    assert result["WR"]["strength"] == pytest.approx(0.25)
-    assert result["WR"]["still_needed"] == 1
-    assert result["TE"]["strength"] == 0.0
-    assert result["TE"]["still_needed"] == 1
+    assert sum(neutral["neutral_targets"].values()) == pytest.approx(1.0)
+    assert sum(tilted["adjusted_targets"].values()) == pytest.approx(1.0)
+    assert tilted["adjusted_targets"]["RB"] > neutral["adjusted_targets"]["RB"]
+    assert strength.market_value(2, 0.5) == pytest.approx(2**-0.5)
 
 
-def test_column_order_uses_strength_instead_of_raw_count_when_checkpoint_need_is_equal():
+def test_flex_pair_credits_are_proportional_and_sum_to_one_share():
+    rb, wr = 0.28, 0.31
+    rb_credit, wr_credit = strength._flex_credits([rb], [wr], 1)
+    assert rb_credit == pytest.approx((rb / (rb + wr)) * rb)
+    assert wr_credit == pytest.approx((wr / (rb + wr)) * wr)
+    assert rb / (rb + wr) + wr / (rb + wr) == pytest.approx(1.0)
+
+
+def test_bench_only_candidate_adds_zero_strength():
+    starters = {"QB": 1, "RB": 1, "WR": 0, "TE": 0, "FLEX": 0}
+    consensus = {"r1": 1, "r2": 2, "r3": 3, "q": 4}
+    positions = {"r1": "RB", "r2": "RB", "r3": "RB", "q": "QB"}
+    roster = {"QB": [], "RB": [player("r1", "RB")], "WR": [], "TE": []}
+    params = strength.ModelParameters()
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
+    impact = strength.candidate_strength(
+        roster, player("r3", "RB"), current, 1, starters, consensus, positions, params
+    )
+    assert impact["delta"] == pytest.approx(0.0)
+
+
+def test_better_candidate_cannot_reduce_position_strength():
+    starters = {"QB": 0, "RB": 1, "WR": 0, "TE": 0, "FLEX": 0}
+    consensus = {"r1": 10, "r2": 2}
+    positions = {"r1": "RB", "r2": "RB"}
+    roster = {"QB": [], "RB": [player("r1", "RB")], "WR": [], "TE": []}
+    params = strength.ModelParameters()
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
+    impact = strength.candidate_strength(
+        roster, player("r2", "RB"), current, 1, starters, consensus, positions, params
+    )
+    assert impact["delta"] >= 0
+    assert impact["ending_strength"] >= current["positions"]["RB"]["strength"]
+
+
+def test_missing_consensus_adp_is_explicitly_unavailable():
+    starters = {"QB": 1, "RB": 0, "WR": 0, "TE": 0, "FLEX": 0}
+    consensus = {"q1": 1}
+    positions = {"q1": "QB", "q2": "QB"}
+    roster = {"QB": [], "RB": [], "WR": [], "TE": []}
+    params = strength.ModelParameters()
+    current = strength.summarize_roster(roster, {}, 1, starters, consensus, positions, params)
+    impact = strength.candidate_strength(
+        roster, player("q2", "QB"), current, 1, starters, consensus, positions, params
+    )
+    assert impact == {"available": False, "reason": "consensus ADP unavailable"}
+
+
+def test_column_order_uses_strength_when_checkpoint_need_is_equal():
     counts = {"RB": 1, "WR": 2, "TE": 1, "QB": 1}
     needs = {}
     strengths = {"RB": 1.0, "WR": 0.08, "TE": 0.25, "QB": 0.11}
-
     assert board.order_columns(counts, needs, strengths) == ["WR", "QB", "TE", "RB"]
 
 
-def test_checkpoint_shortfall_still_precedes_weighted_strength():
+def test_checkpoint_shortfall_still_precedes_strength():
     counts = {"RB": 2, "WR": 1, "TE": 1, "QB": 1}
     needs = {"WR": 1}
     strengths = {"RB": 0.05, "WR": 1.0, "TE": 0.01, "QB": 0.02}
-
     assert board.order_columns(counts, needs, strengths)[0] == "WR"
