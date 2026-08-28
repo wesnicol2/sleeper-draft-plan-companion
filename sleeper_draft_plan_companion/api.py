@@ -17,7 +17,12 @@ from . import plan as plan_module
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
 UI_DIR = Path(__file__).resolve().parent.parent / "ui"
-REASONS = {200: "OK", 404: "Not Found", 405: "Method Not Allowed", 503: "Service Unavailable"}
+REASONS = {
+    200: "OK",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    503: "Service Unavailable",
+}
 
 
 class Unavailable(Exception):
@@ -127,15 +132,23 @@ def application(environ: dict, start_response: Callable) -> Iterable[bytes]:
         return _respond(start_response, 405, {"error": "method not allowed"})
     handler = ROUTES.get(path.rstrip("/") or "/")
     if handler is not None:
-        query = {k: v[0] for k, v in parse_qs(environ.get("QUERY_STRING", "")).items() if v}
+        query = {
+            k: v[0]
+            for k, v in parse_qs(environ.get("QUERY_STRING", "")).items()
+            if v
+        }
         try:
             return _respond(start_response, 200, handler(query))
         except Unavailable as exc:
-            return _respond(start_response, 503, {"error": "upstream_unavailable", "detail": str(exc)})
+            return _respond(
+                start_response,
+                503,
+                {"error": "upstream_unavailable", "detail": str(exc)},
+            )
     if path in {"", "/"}:
         return _serve_static(start_response, "index.html")
     if path.startswith("/ui/"):
-        return _serve_static(start_response, path[len("/ui/"):])
+        return _serve_static(start_response, path[len("/ui/") :])
     return _respond(start_response, 404, {"error": "not found", "path": path})
 
 
@@ -144,7 +157,10 @@ def _serve_static(start_response: Callable, rel_path: str) -> Iterable[bytes]:
     if not target.is_relative_to(UI_DIR) or not target.is_file():
         return _respond(start_response, 404, {"error": "not found", "path": rel_path})
     ctype = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
-    if ctype.startswith("text/") or ctype in {"application/javascript", "application/json"}:
+    if ctype.startswith("text/") or ctype in {
+        "application/javascript",
+        "application/json",
+    }:
         ctype = f"{ctype}; charset=utf-8"
     return _send(start_response, 200, target.read_bytes(), [("Content-Type", ctype)])
 
@@ -153,7 +169,12 @@ def _respond(start_response: Callable, status: int, payload: object) -> Iterable
     return _send(start_response, status, json.dumps(payload).encode("utf-8"), JSON_HEADERS)
 
 
-def _send(start_response: Callable, status: int, body: bytes, headers: list[tuple[str, str]]) -> Iterable[bytes]:
+def _send(
+    start_response: Callable,
+    status: int,
+    body: bytes,
+    headers: list[tuple[str, str]],
+) -> Iterable[bytes]:
     headers = [*headers, ("Content-Length", str(len(body)))]
     start_response(f"{status} {REASONS[status]}", headers)
     return [body]
