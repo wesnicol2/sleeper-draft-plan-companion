@@ -19,7 +19,7 @@ jobs:
       - name: Ruff format check
         uses: astral-sh/ruff-action@v3
         with:
-          args: format --check
+          args: format --check --diff
 
       - name: Set up Python
         uses: actions/setup-python@v5
