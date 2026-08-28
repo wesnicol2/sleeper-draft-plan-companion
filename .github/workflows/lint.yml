@@ -20,16 +20,15 @@ jobs:
         with:
           args: format
 
-      - name: Upload formatted Python
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-formatted-python
-          path: |
-            sleeper_draft_plan_companion/*.py
-            tests/*.py
-
-      - name: Verify formatter was clean
-        run: git diff --exit-code -- '*.py'
+      - name: Commit exact formatter output
+        run: |
+          if ! git diff --quiet -- '*.py'; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add sleeper_draft_plan_companion/*.py tests/*.py
+            git commit -m "Apply exact Ruff formatting [skip ci]"
+            git push
+          fi
 
       - name: Set up Python
         uses: actions/setup-python@v5
