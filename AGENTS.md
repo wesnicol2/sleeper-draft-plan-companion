@@ -263,6 +263,13 @@ replacement value. Its purpose is to distinguish roster constructions that raw
 counts treat as identical. It should remain easy to replace later when a better
 player-value model exists.
 
+The proposed ADP-based replacement, including market-derived positional targets,
+RB/WR FLEX allocation, tunable calibration parameters, candidate hypothetical
+strength, and mock-draft stress-testing rules, is specified in
+[`docs/positional-strength-model.md`](docs/positional-strength-model.md). That
+spec is intentionally ahead of the current implementation until stress testing
+justifies replacing the inverse-square MVP.
+
 Checkpoint `still_needed` remains based on roster requirements and counts. The
 strength model does not silently redefine checkpoint rules. Instead the board
 shows both facts and uses weighted strength as the primary ordering signal once
@@ -305,7 +312,10 @@ separate so one unexplained color does not encode unrelated concepts.
 
 Cost of waiting and strength update automatically. There are no sliders or
 manual weighting controls in these MVPs because those would require attention
-during the exact moment the app is meant to reduce cognitive load.
+during the exact moment the app is meant to reduce cognitive load. The proposed
+replacement strength model is an exception during calibration: its tuning
+parameters are intentionally exposed in Test so mock drafts can stress-test the
+math before those controls are reconsidered for the final product.
 
 ## Deployment shape
 
