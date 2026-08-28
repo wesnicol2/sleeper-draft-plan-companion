@@ -1,0 +1,26 @@
+.granked.starred-player {
+  outline: 2px solid #ffd866;
+  outline-offset: 1px;
+  box-shadow: inset 0 0 0 999px rgba(255,216,102,0.08);
+}
+
+.granked.starred-player .pname { color: #fff1b8; }
+
+.player-star {
+  position: absolute;
+  left: 0.35rem;
+  top: 0.2rem;
+  z-index: 3;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #ffd866;
+  font: inherit;
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.granked:has(.player-star) { padding-left: 1.75rem; }
+.player-star:hover { transform: scale(1.12); }
+.player-star:focus-visible { outline: 2px solid #ffd866; outline-offset: 2px; border-radius: 2px; }
