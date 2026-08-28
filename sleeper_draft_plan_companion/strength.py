@@ -66,7 +66,9 @@ def _values_by_position(
     positions_by_player: dict[str, str],
     alpha: float,
 ) -> dict[str, list[tuple[str, float]]]:
-    values: dict[str, list[tuple[str, float]]] = {position: [] for position in TRACKED_POSITIONS}
+    values: dict[str, list[tuple[str, float]]] = {
+        position: [] for position in TRACKED_POSITIONS
+    }
     for player_id, consensus in consensus_by_player.items():
         position = positions_by_player.get(player_id)
         if position not in values:
@@ -115,7 +117,9 @@ def build_targets(
 ) -> dict[str, Any]:
     """Build neutral shares T_P, adjusted shares T'_P, and absolute targets G_P."""
     teams = max(1, int(teams or 1))
-    values = _values_by_position(consensus_by_player, positions_by_player, parameters.alpha)
+    values = _values_by_position(
+        consensus_by_player, positions_by_player, parameters.alpha
+    )
     mandatory: dict[str, float] = {}
     excess: dict[str, list[float]] = {}
 
@@ -137,14 +141,21 @@ def build_targets(
         adjusted = dict(neutral)
         goals = dict(neutral)
     else:
-        neutral = {position: totals[position] / market_total for position in TRACKED_POSITIONS}
-        weighted_total = sum(neutral[p] * parameters.betas[p] for p in TRACKED_POSITIONS)
+        neutral = {
+            position: totals[position] / market_total for position in TRACKED_POSITIONS
+        }
+        weighted_total = sum(
+            neutral[position] * parameters.betas[position]
+            for position in TRACKED_POSITIONS
+        )
         adjusted = {
             position: neutral[position] * parameters.betas[position] / weighted_total
             for position in TRACKED_POSITIONS
         }
         per_team = market_total / teams
-        goals = {position: adjusted[position] * per_team for position in TRACKED_POSITIONS}
+        goals = {
+            position: adjusted[position] * per_team for position in TRACKED_POSITIONS
+        }
 
     return {
         "market_total": market_total,
@@ -238,7 +249,9 @@ def summarize_roster(
     parameters: ModelParameters,
 ) -> dict[str, Any]:
     """Calculate current S_P and expose every inspectable target component."""
-    targets = build_targets(teams, starters, consensus_by_player, positions_by_player, parameters)
+    targets = build_targets(
+        teams, starters, consensus_by_player, positions_by_player, parameters
+    )
     contributions, player_credit = roster_contributions(
         roster, starters, consensus_by_player, parameters.alpha
     )
@@ -259,8 +272,12 @@ def summarize_roster(
                     "name": player.get("name"),
                     "round": player.get("round"),
                     "pick_no": player.get("pick_no"),
-                    "consensus_adp": consensus_by_player.get(str(player.get("player_id") or "")),
-                    "credited_value": player_credit.get(str(player.get("player_id") or "")),
+                    "consensus_adp": consensus_by_player.get(
+                        str(player.get("player_id") or "")
+                    ),
+                    "credited_value": player_credit.get(
+                        str(player.get("player_id") or "")
+                    ),
                 }
                 for player in roster.get(position, [])
             ],
@@ -282,10 +299,16 @@ def candidate_strength(
     position = candidate.get("position")
     player_id = str(candidate.get("player_id") or "")
     consensus = consensus_by_player.get(player_id)
-    if position not in TRACKED_POSITIONS or market_value(consensus, parameters.alpha) is None:
+    if (
+        position not in TRACKED_POSITIONS
+        or market_value(consensus, parameters.alpha) is None
+    ):
         return {"available": False, "reason": "consensus ADP unavailable"}
 
-    hypothetical = {key: [dict(player) for player in roster.get(key, [])] for key in TRACKED_POSITIONS}
+    hypothetical = {
+        key: [dict(player) for player in roster.get(key, [])]
+        for key in TRACKED_POSITIONS
+    }
     hypothetical[position].append(
         {
             "player_id": player_id,
