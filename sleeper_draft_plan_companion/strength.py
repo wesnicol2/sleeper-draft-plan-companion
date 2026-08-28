@@ -8,7 +8,7 @@ from typing import Any
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
 FLEX_POSITIONS = ("RB", "WR")
 DEFAULT_ALPHA = 0.50
-DEFAULT_BETAS = {position: 1.0 for position in TRACKED_POSITIONS}
+DEFAULT_BETAS = dict.fromkeys(TRACKED_POSITIONS, 1.0)
 DEFAULT_STARTERS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "FLEX": 1}
 
 
@@ -133,7 +133,7 @@ def build_targets(
 
     market_total = sum(totals.values())
     if market_total <= 0:
-        neutral = {position: 0.0 for position in TRACKED_POSITIONS}
+        neutral = dict.fromkeys(TRACKED_POSITIONS, 0.0)
         adjusted = dict(neutral)
         goals = dict(neutral)
     else:
@@ -179,7 +179,7 @@ def roster_contributions(
             position_values[position].append((player, value))
         position_values[position].sort(key=lambda item: item[1], reverse=True)
 
-    contributions = {position: 0.0 for position in TRACKED_POSITIONS}
+    contributions = dict.fromkeys(TRACKED_POSITIONS, 0.0)
     excess: dict[str, list[tuple[dict[str, Any], float]]] = {"RB": [], "WR": []}
 
     for position in TRACKED_POSITIONS:
