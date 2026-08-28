@@ -22,7 +22,7 @@ def order_columns(counts, needs, strengths=None):
     return sorted(TRACKED_POSITIONS, key=sort_key)
 
 
-def criteria_count(position, still_needed, lean):
+def criteria_count(position: str, still_needed: dict[str, Any], lean: str | None) -> int:
     return int(bool(still_needed.get(position))) + int(position == lean)
 
 
