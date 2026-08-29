@@ -66,10 +66,11 @@ def test_same_position_team_overlap_is_twice_cross_position_overlap():
     assert "'team-same-position'" in js
 
 
-def test_same_team_qb_rb_pair_is_neutral_for_card_color():
+def test_same_team_rb_with_qb_wr_or_te_is_neutral_for_card_color():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     assert "function isNeutralTeamPair" in js
-    assert "positions.has('QB') && positions.has('RB')" in js
+    assert "positions.size !== 2 || !positions.has('RB')" in js
+    assert "positions.has('QB') || positions.has('WR') || positions.has('TE')" in js
     assert "!isNeutralTeamPair(player, rostered)" in js
     assert "coloredTeamRelationships" in js
 
