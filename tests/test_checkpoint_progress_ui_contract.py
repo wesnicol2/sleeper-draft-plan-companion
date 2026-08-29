@@ -24,17 +24,17 @@ def test_checkpoint_progress_uses_remaining_user_turns_and_needs():
     assert "round" in js
 
 
-def test_checkpoint_progress_is_rendered_inside_board_needs_band():
+def test_checkpoint_progress_is_rendered_in_board_header():
     js = (ROOT / "ui" / "checkpoint-progress.js").read_text()
     css = (ROOT / "ui" / "checkpoint-progress.css").read_text()
 
     assert "const originalRenderBoard = renderBoard" in js
-    assert "originalRenderCheckpoint" not in js
-    assert "cell.textContent.trim() === 'NEEDS'" in js
-    assert "moveRowsDown(grid, needStart, needsGutter)" in js
-    assert "summary.style.gridColumn = '2 / -1'" in js
-    assert "checkpoint-progress-summary" in js
-    assert ".checkpoint-progress-summary" in css
+    assert "document.getElementById('boardMeta')" in js
+    assert "addBoardProgressMeta(board)" in js
+    assert "round') + ' left'" in js
+    assert "free pick') + ' left'" in js
+    assert "checkpoint-progress-meta" in js
+    assert "#boardMeta.checkpoint-progress-meta" in css
 
 
 def test_checkpoint_progress_distinguishes_free_and_constrained_choices():
@@ -43,5 +43,5 @@ def test_checkpoint_progress_distinguishes_free_and_constrained_choices():
 
     assert "has-free-picks" in js
     assert "no-free-picks" in js
-    assert ".checkpoint-progress-summary.has-free-picks" in css
-    assert ".checkpoint-progress-summary.no-free-picks" in css
+    assert "#boardMeta.checkpoint-progress-meta.has-free-picks" in css
+    assert "#boardMeta.checkpoint-progress-meta.no-free-picks" in css
