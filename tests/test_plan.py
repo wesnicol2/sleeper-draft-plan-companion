@@ -52,7 +52,9 @@ def test_checkpoint_lookup_and_last_round_follow_supplied_plan(data_dir):
     assert plan.checkpoint_for_round(p, 7) is None
 
 
-def test_alternate_valid_packaged_strategy_loads_without_special_cases(data_dir, tmp_path, monkeypatch):
+def test_alternate_valid_packaged_strategy_loads_without_special_cases(
+    data_dir, tmp_path, monkeypatch
+):
     alternate = tmp_path / "alternate-default.json"
     alternate.write_text(
         json.dumps(
