@@ -17,14 +17,24 @@ def test_contextual_signal_assets_replace_separate_stack_and_bye_assets():
 
 def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
     js = (ROOT / "ui" / "board-signals.js").read_text()
-    for label in ("NEED", "LEAN", "WEAK", "STACK"):
+    for label in ("NEED", "LEAN", "WEAK", "STACK", "TOP 5 OFF"):
         assert f"'{label}'" in js
-    for label in ("TEAM", "TEAM LOAD", "BYE", "BYE LOAD"):
+    for label in ("TEAM", "TEAM LOAD", "BYE", "BYE LOAD", "BOTTOM 5 OFF"):
         assert f"'{label}'" in js
     assert "isPassStackPair" in js
     assert "samePositionBye" in js
     assert "sameBye.length >= 2" in js
     assert "sameTeam.length >= 2" in js
+
+
+def test_contextual_offense_tiers_match_configured_teams():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "TOP_5_OFFENSE_TEAMS = new Set(['LAR', 'BUF', 'DET', 'CIN', 'BAL'])" in js
+    assert "BOTTOM_5_OFFENSE_TEAMS = new Set(['LV', 'MIA', 'CLE', 'ARI', 'NYJ'])" in js
+    assert "TOP_5_OFFENSE_TEAMS.has(player.team)" in js
+    assert "BOTTOM_5_OFFENSE_TEAMS.has(player.team)" in js
+    assert "'top-offense', 'TOP 5 OFF'" in js
+    assert "'bottom-offense', 'BOTTOM 5 OFF'" in js
 
 
 def test_contextual_signal_color_blends_green_red_and_brown_by_signal_counts():
