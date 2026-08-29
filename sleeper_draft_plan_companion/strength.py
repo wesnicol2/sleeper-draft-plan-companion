@@ -293,7 +293,8 @@ def candidate_strength(
     positions_by_player: dict[str, str],
     parameters: ModelParameters,
 ) -> dict[str, Any]:
-    """Re-optimize the roster after hypothetically adding one candidate."""
+    """Re-optimize roster credit after adding one candidate, reusing fixed targets."""
+    del teams, positions_by_player
     position = candidate.get("position")
     player_id = str(candidate.get("player_id") or "")
     consensus = consensus_by_player.get(player_id)
@@ -311,17 +312,15 @@ def candidate_strength(
             "pick_no": None,
         }
     )
-    after = summarize_roster(
+    contributions, _credits = roster_contributions(
         hypothetical,
-        {},
-        teams,
         starters,
         consensus_by_player,
-        positions_by_player,
-        parameters,
+        parameters.alpha,
     )
+    goal = current_summary["targets"]["goals"][position]
     current_strength = current_summary["positions"][position]["strength"]
-    ending_strength = after["positions"][position]["strength"]
+    ending_strength = contributions[position] / goal if goal > 0 else 0.0
     return {
         "available": True,
         "consensus_adp": consensus,
