@@ -18,7 +18,9 @@
   }
 
   function rosterPlayers(roster) {
-    return Object.values(roster || {}).flatMap((players) => players || []);
+    return Object.entries(roster || {}).flatMap(([position, players]) =>
+      (players || []).map((player) => ({ ...player, position: player.position || position }))
+    );
   }
 
   function isPassStackPair(candidate, rostered) {
@@ -85,14 +87,18 @@
 
     const week = byeWeek(player);
     if (week != null) {
-      const sameBye = allRostered.filter((rostered) => byeWeek(rostered) === week);
+      // A same-team relationship already has a stronger TEAM or STACK signal.
+      // Do not double-count its guaranteed matching bye week as another negative.
+      const sameBye = allRostered.filter(
+        (rostered) => rostered.team !== player.team && byeWeek(rostered) === week
+      );
       const samePositionBye = sameBye.filter((rostered) => rostered.position === player.position);
       if (samePositionBye.length) {
         const names = samePositionBye.map((rostered) => rostered.name || player.position).join(' + ');
         signals.push(signal('negative', 'bye', 'BYE', 'Same-position Week ' + week + ' bye conflict with ' + names));
       }
       if (sameBye.length >= 2) {
-        signals.push(signal('negative', 'bye-load', 'BYE LOAD', 'Drafting this player would put at least three rostered players on bye in Week ' + week));
+        signals.push(signal('negative', 'bye-load', 'BYE LOAD', 'Drafting this player would put at least three unrelated rostered players on bye in Week ' + week));
       }
     }
 
