@@ -51,6 +51,13 @@ environment and promotion rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
 The canonical ranking input is the repository's static `resources/adp.csv`.
 FantasyPros is no longer used by the live board or Cost of waiting model.
 
+Personal preferences are also repository configuration. Edit
+`resources/player-preferences.csv` for starred / Do Not Draft flags and
+`resources/general-preferences.csv` for strength-model parameters, then promote
+the resulting image normally. The UI is read-only for these settings: browser
+`localStorage`, Test/Production data volumes, and container recreation do not
+change them.
+
 ## Run from source
 
 ```bash
@@ -86,9 +93,9 @@ CI runs those checks on every push. A red check blocks promotion.
 ## The board
 
 The main grid reads vertically as rank and horizontally as position. The four
-tracked positions are QB, RB, WR, and TE. Columns with an unmet checkpoint need
-come first; already-satisfied positions are ordered by **weighted positional
-strength**, weakest first.
+tracked positions are QB, RB, WR, and TE. Columns sort first by the largest
+remaining checkpoint need, then by **weighted positional strength**, weakest
+first when need is tied.
 
 Top to bottom:
 
@@ -126,6 +133,12 @@ The checkpoint system remains intact. Cost of waiting, weighted strength, and
 contextual signals are additional decision context, not replacements for
 checkpoint minimums or canonical ranking.
 
+Starred and Do Not Draft state comes only from
+`resources/player-preferences.csv`. A star remains a presentation-only target.
+Do Not Draft remains a presentation-only hard visual block; neither preference
+changes canonical ranking or the Cost of waiting calculation, and neither can be
+changed from the browser.
+
 ## Contextual player signals
 
 Contextual signals describe how a candidate fits the roster and active draft
@@ -134,17 +147,17 @@ waiting, or the checkpoint calculations.
 
 Positive signals currently include:
 
-- `NEED` — fills an outstanding checkpoint positional need;
 - `LEAN` — matches the checkpoint lean;
-- `WEAK` — plays the uniquely weakest current position by weighted strength;
 - `STACK` — creates a same-team QB + WR/TE stack with a rostered player;
 - `TOP 5 OFF` — plays for one of the configured top-five offenses: Rams, Bills,
   Lions, Bengals, or Ravens.
 
 Negative signals currently include:
 
-- `BYE` — conflicts with a rostered same-position player's bye week;
-- `BYE LOAD` — would put at least three rostered players on the same bye week;
+- `BYE` — conflicts with a rostered player at the **exact same position** on the
+  same bye week, excluding same-team relationships already represented by TEAM
+  or STACK;
+- `BYE LOAD` — would create three or more same-position players sharing that bye;
 - `TEAM` — overlaps with a rostered player from the same NFL team outside a
   QB + WR/TE stack relationship;
 - `TEAM LOAD` — would put at least three players from the same NFL team on the
@@ -161,7 +174,8 @@ converges on brown. Mixed unequal cases blend brown toward the dominant side.
 
 Do Not Draft is intentionally stronger than contextual coloring. A blocked card
 uses the dedicated full-red treatment and hides all secondary information except
-the player name and unblock control.
+the player name and static `⊘` marker. Removing the block requires changing
+`resources/player-preferences.csv` and deploying that repository change.
 
 ## Cost of waiting
 
@@ -196,27 +210,31 @@ Checkpoint need is intentionally separate and does not alter the cost number.
 
 ## Weighted positional strength
 
-Roster count alone does not distinguish an early-round starter from a late-round
-dart throw. The current MVP therefore assigns every rostered QB/RB/WR/TE a draft
-investment contribution:
+Weighted positional strength uses Consensus ADP as a market-value input rather
+than raw roster count. For a player with Consensus ADP `a`:
 
-`player strength = 1 / draft_round²`
+`V = a^(-alpha)`
 
-Examples: Round 1 = `1.000`, Round 2 = `0.250`, Round 3 = `0.111`, Round 5 =
-`0.040`, Round 10 = `0.010`.
+`alpha` and the positional `beta_QB`, `beta_RB`, `beta_WR`, and `beta_TE`
+preference multipliers come from `resources/general-preferences.csv`. They are
+repository-backed settings and cannot be changed from the UI or `/board` query
+parameters.
 
-A position's strength is the sum of its rostered players' contributions. The
-board exposes both the total in the position header (`S 1.250`) and each drafted
-player's individual contribution (`S +1.000`). If the active checkpoint still
-requires players at that position, that count remains visible beside strength.
+The model derives a neutral position target from the expected league-wide
+starter pool. RB and WR compete proportionally for FLEX demand; TE is not treated
+as a FLEX position in the current model. Positional beta values tilt those
+neutral targets and the targets are normalized again.
 
-Checkpoint minimums are still count-based. Strength does **not** silently change
-`still_needed`; it provides a separate description of how much draft investment
-is already held at that position. When checkpoint shortfalls are equal or absent,
-board column order uses lower positional strength before raw roster count.
+Rostered starters/FLEX players receive full market-value credit. Players beyond
+that capacity receive diminishing bench-depth credit: first bench player `1/2`,
+then `1/3`, `1/4`, and so on. Position strength is credited roster value divided
+by the adjusted finished-roster target, so values above `1.0` can legitimately
+represent additional depth.
 
-This is intentionally only a draft-investment proxy. It is not WAR and should be
-replaced later if a defensible player-value model becomes available.
+Checkpoint minimums remain count-based and separate. They have precedence in
+column sorting; strength is the secondary ordering signal when remaining need is
+tied. Candidate cards show the position's ending strength and delta if that
+player were drafted, but strength does not itself color the player card.
 
 ## Draft plan
 
@@ -247,9 +265,12 @@ button is an escape hatch and sends `?fresh=1` for live draft state.
   - `plan.py` — checkpoint-plan loading.
   - `board.py` — board assembly, 32-player horizon, future-pick markers, and decision-context integration.
   - `decision.py` — deterministic Cost of waiting context.
-  - `strength.py` — inverse-square roster-strength calculation.
+  - `strength.py` — Consensus-ADP weighted positional-strength model.
+  - `preferences.py` — repository-backed player and model preferences.
 - `resources/adp.csv` — canonical static ADP input.
-- `ui/` — plain HTML/CSS/vanilla JS; `board-signals.js` owns contextual signal presentation; no build step.
+- `resources/player-preferences.csv` — read-only starred / Do Not Draft source.
+- `resources/general-preferences.csv` — read-only strength-model parameters.
+- `ui/` — plain HTML/CSS/vanilla JS; no build step.
 - `tests/` — unit tests.
 - `docs/` — human-owned long-form planning/specification documents.
 
