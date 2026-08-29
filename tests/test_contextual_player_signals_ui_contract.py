@@ -23,7 +23,7 @@ def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
         assert f"'{label}'" in js
     assert "isPassStackPair" in js
     assert "samePositionBye" in js
-    assert "sameBye.length >= 2" in js
+    assert "samePositionBye.length >= 2" in js
     assert "sameTeam.length >= 2" in js
 
 
@@ -49,8 +49,17 @@ def test_same_team_relationship_replaces_redundant_bye_signal():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     assert "const stackMatches = sameTeam.filter" in js
     assert "const nonStackTeam = sameTeam.filter" in js
-    assert "rostered.team !== player.team && byeWeek(rostered) === week" in js
-    assert "Do not double-count its guaranteed matching bye week" in js
+    assert "rostered.team !== player.team" in js
+    assert "relationship already has a stronger TEAM or STACK signal" in js
+
+
+def test_bye_signals_only_compare_the_exact_same_position():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "rostered.position === player.position" in js
+    assert "const samePositionBye = allRostered.filter" in js
+    assert "if (samePositionBye.length)" in js
+    assert "if (samePositionBye.length >= 2)" in js
+    assert "sameBye" not in js
 
 
 def test_contextual_offense_tiers_match_configured_teams():

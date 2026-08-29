@@ -70,18 +70,20 @@
 
     const week = byeWeek(player);
     if (week != null) {
-      // A same-team relationship already has a stronger TEAM or STACK signal.
-      // Do not double-count its guaranteed matching bye week as another negative.
-      const sameBye = allRostered.filter(
-        (rostered) => rostered.team !== player.team && byeWeek(rostered) === week
+      // Bye conflicts only matter within the exact same position. A same-team
+      // relationship already has a stronger TEAM or STACK signal, so exclude it.
+      const samePositionBye = allRostered.filter(
+        (rostered) =>
+          rostered.team !== player.team &&
+          rostered.position === player.position &&
+          byeWeek(rostered) === week
       );
-      const samePositionBye = sameBye.filter((rostered) => rostered.position === player.position);
       if (samePositionBye.length) {
         const names = samePositionBye.map((rostered) => rostered.name || player.position).join(' + ');
         signals.push(signal('negative', 'bye', 'BYE', 'Same-position Week ' + week + ' bye conflict with ' + names));
       }
-      if (sameBye.length >= 2) {
-        signals.push(signal('negative', 'bye-load', 'BYE LOAD', 'Drafting this player would put at least three unrelated rostered players on bye in Week ' + week));
+      if (samePositionBye.length >= 2) {
+        signals.push(signal('negative', 'bye-load', 'BYE LOAD', 'Drafting this player would put at least three ' + player.position + ' players on bye in Week ' + week));
       }
     }
 
