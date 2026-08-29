@@ -1,85 +1,97 @@
-- Draft companion
-    - Will keep up with draft and suggest players at each point based on draft plan (draft plan should be configured in config files only)
-    - Auto update with top suggestions for each round depending on team construction + my preferences
-    
-            
+Draft Companion — planning notes
 
-Minimum viable product: A auto updating UI (no interaction needed from user) which shows top picks based on draft plan. Players should be highlighted with different colors based on how many draft plan criteria they have
+PRODUCT GOAL
+- Auto-updating second-screen UI for a live Sleeper draft.
+- Reduce draft-time interaction: roster state, needs, player availability, and
+  decision context should already be visible when the user looks at the board.
+- Keep ranking and recommendation signals separate and explainable rather than
+  hiding every preference inside one score.
 
-NEXT STEPS: 
-- Improve player highlighting and decision context
-    - Add team synergy signals:
-        - Highlight WRs/TEs whose QB is already on the roster.
-        - Highlight QBs whose WR/TE is already on the roster.
-    - Add bye-week signals:
-        - Negatively highlight players whose bye week conflicts with an existing player at the same position.
-    - Keep each signal separate and explainable rather than incorporating them into ranking yet.
-- Model positional strength
-    - In the draft-plan, Replace simple player counts with weighted positional strength. We should be looking for strength at each position, not plain counts of players
-    - Weight drafted players by round, initially using an inverse-square curve (1 / round²).
-    - Combine positional strength with remaining positional needs to determine which positions are actually scarce.
-    - Eventually replace round-based weighting with the individual player's WAR.
-- Build a flexible player-ranking system
-    - Give every player a canonical rank and support multiple ranking sources.
-    - Initially support the static ADP CSV, with the ability to manually override ranks.
-    - Later support alternative ranking sets such as ADP, external rankings, and WAR.
-        - Define player value above replacement
-        - Establish a positional definition of replacement value.
-        - Calculate value above replacement for each player.
-    - Use the value gaps to identify meaningful positional drop-offs and “dead zones.”
-    - Identify the last strong option at each position before a significant drop-off.
-- Add later-round alternatives
-- Show the best remaining players at each position outside the current checkpoint.
-- Include their rank/value and likely draft range.
-- Use this to answer “Can I safely wait?” before drafting a position early.
-- Base this increasingly on WAR and positional drop-offs rather than arbitrary round thresholds.
-- Build a draft-value/recommendation model
-- Combine ranking, positional need, positional strength, WAR, drop-off risk, and later-round alternatives.
-- Add contextual signals such as:
-    - team/offensive environment
-    - handcuff value
-    - coaching changes
-    - teammate changes
-    - starter/injury opportunity
-    - bye-week fit
-    - roster synergy
-    - Keep individual factors visible so recommendations remain explainable.
-- Integrate higher-fidelity rankings
-- Validate the model against real drafts
-    - Replay historical draft scenarios.
-    - Test whether the system correctly identifies scarcity, safe waits, drop-offs, and players who should be taken before a positional cliff.
-    - Tune heuristics only after observing where the model produces bad recommendations.
+CURRENT IMPLEMENTED FOUNDATION
+- Tracks Sleeper draft state, the user's roster, snake-draft timing, and the
+  configured checkpoint plan.
+- Normal board shows every active, undrafted QB/RB/WR/TE known to Sleeper; there
+  is no fixed 32-player horizon.
+- Player ordering uses repository static ADP first, Sleeper search_rank as an
+  explicit fallback, then a deterministic unranked tail so deep players are not
+  dropped just because ranking data is missing.
+- Cost of waiting compares canonical static ADP now vs the same-position fallback
+  at the user's next projected pick. This is ordinal ADP deterioration, not WAR.
+- Positional strength uses Consensus ADP market value, league starter/FLEX
+  structure, strategic beta targets, and diminishing bench-depth credit.
+- Checkpoint need remains count-based and sorts columns before positional
+  strength; neither checkpoint need nor strength colors player cards.
 
-- Player notes / snippets
-    - When I hear something about a player (podcast, beat writer, injury chatter), log it against that player
-    - A player with notes shows an icon on their card so it is obvious at a glance which players I have intel on
-    - Clicking the icon opens that player's notes
-    - Notes persist across sessions and are mine, not shared
-    - Open questions to settle before building:
-        - Are notes free text only, or also tagged (injury / role / coaching / sleeper)?
-        - Can a note be added mid-draft, or is logging a pre-draft activity only?
-          (the app is otherwise strictly no-interaction during a draft)
-        - Do notes affect ranking or highlighting at all, or are they purely informational?
+REPOSITORY-BACKED PERSONAL PREFERENCES
+- resources/player-preferences.csv owns Starred and Do Not Draft.
+- resources/general-preferences.csv owns positional-strength alpha/beta values.
+- resources/dart-throws.csv owns the ordered late-draft Dart Throw list and the
+  user's rationale for each candidate.
+- These settings are intentionally not editable in the live UI. Repository state
+  is the source of truth so browsers, Test, Production, and recreated containers
+  remain consistent for a deployed commit.
 
+CONTEXTUAL PLAYER SIGNALS
+- Positive: checkpoint LEAN, QB + WR/TE passing STACK, configured TOP 5 OFF.
+- Negative: configured BOTTOM 5 OFF, same-position bye conflicts, and same-team
+  concentration outside a passing stack.
+- Same-team overlap is position-sensitive:
+  - same position = TEAM×2, negative color weight 2;
+  - different position = TEAM, negative color weight 1;
+  - QB + WR/TE = positive STACK;
+  - QB + RB = neutral and does not count toward card color/team load.
+- Signals are presentation-only. They should remain visible/explainable and not
+  silently rewrite canonical rank.
 
-STRETCH GOALS: 
-    - Show season long curve comparison between top 5 players or so based on season long props from odds api (stretch goal)
-    - calculate predicted Wins Above Replacement (WAR) for every player and rank based on that
+DART THROW MODE
+- Unlock only after QB, RB, WR, and TE positional strength are each >= 1.00.
+- Then expose a Normal / DART THROW view toggle.
+- Normal mode stays unchanged.
+- Dart Throw mode shows only currently available players from
+  resources/dart-throws.csv, in the exact static order defined there.
+- Each dart card remains the same underlying card with its normal strength,
+  contextual color/signals, Starred and Do Not Draft treatment, plus the
+  repository rationale explaining the upside thesis.
+- Dart candidates do not need canonical ADP coverage; name+position matching to
+  the Sleeper player pool is sufficient.
+- ADP fallback rails / next-pick geometry are hidden while the board is in a
+  deliberately non-ADP Dart Throw order.
+- The rationale is personal scouting context, not verified news or a numeric
+  recommendation input.
 
+NEXT MODELING WORK
+- Validate Cost of waiting and positional-strength behavior with real/historical
+  drafts before adding urgency buckets or a unified recommendation score.
+- Consider WAR/replacement-value only after the underlying scale and replacement
+  definition are defensible.
+- Add probabilistic player availability only when historical draft data supports
+  it; do not replace a transparent deterministic rule with arbitrary confidence.
+- Explore a separate ceiling/breakout model for bench players. Positional
+  strength's diminishing bench-depth credit is not intended to predict upside.
+- Preserve individual signals (offensive environment, injury opportunity,
+  handcuff value, coaching/team changes) even if a future aggregate score is
+  added, so surprising recommendations stay inspectable.
 
+VALIDATION PRIORITIES
+- Real Sleeper mock drafts across early RB-heavy, WR-heavy, late-RB, early QB/TE,
+  and delayed QB/TE builds.
+- Confirm the full uncapped board remains responsive while candidate strength is
+  calculated for every available player.
+- Confirm same-position team overlap is visibly stronger than cross-position
+  overlap and QB/RB same-team pairs are neutral.
+- Confirm repository Starred/Do Not Draft/model settings are identical in Test
+  and Production after promotion and cannot be changed from the UI.
+- Confirm Dart Throw toggle appears exactly when the fourth tracked position
+  reaches 1.00, preserves exact CSV order, and shows rationale for deep players.
 
-INITIAL DESIGN:
-User Experience: 
-- This app is running on a second screen during the draft.
-- Before the first pick - the app displays the top 12 choices for the players first pick (12 because that is the number of teams in the draft)
+STRETCH GOALS
+- Season-long player projections from odds data.
+- Defensible Wins Above Replacement for every player.
+- Historical replay harness for draft decision quality.
+- Additional repository-backed player notes/categories if they remain useful
+  without introducing draft-time editing overhead.
 
-- Before the second pick - displays top 12 choices for players 2nd pick based on draft plan needs
-etc... 
-
-
-
-DRAFT PLAN CAN BE FOUND AT docs/draft-companion-planning/draft-plan.txt
-
-
-INTERFACES: 
-Sleeper API - get all players drafted and remaining to be drafted (plus pictures and teams and everything which would make it easy to recognize which player it is)
+INTERFACES
+- Sleeper API: draft state, picks, player metadata, teams, draft order.
+- Repository resources: ADP, personal preferences, strength parameters, Dart
+  Throw list/rationale, and draft-plan configuration.
