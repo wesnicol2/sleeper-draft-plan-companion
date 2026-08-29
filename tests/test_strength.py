@@ -131,8 +131,13 @@ def test_column_order_uses_strength_when_checkpoint_need_is_equal():
     assert board.order_columns(counts, needs, strengths) == ["WR", "QB", "TE", "RB"]
 
 
-def test_checkpoint_shortfall_still_precedes_strength():
+def test_column_order_prioritizes_larger_need_before_strength():
     counts = {"RB": 2, "WR": 1, "TE": 1, "QB": 1}
-    needs = {"WR": 1}
-    strengths = {"RB": 0.05, "WR": 1.0, "TE": 0.01, "QB": 0.02}
-    assert board.order_columns(counts, needs, strengths)[0] == "WR"
+    needs = {"RB": 2, "WR": 1, "TE": 1}
+    strengths = {"RB": 1.0, "WR": 0.9, "TE": 0.1, "QB": 0.01}
+    assert board.order_columns(counts, needs, strengths) == ["RB", "TE", "WR", "QB"]
+
+
+def test_need_does_not_count_as_player_card_criteria():
+    assert board.criteria_count("RB", "WR") == 0
+    assert board.criteria_count("WR", "WR") == 1
