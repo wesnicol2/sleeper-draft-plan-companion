@@ -21,7 +21,9 @@
   }
 
   function playerKey(player) {
-    return player && player.id != null ? String(player.id) : '';
+    if (!player) return '';
+    const id = player.player_id != null ? player.player_id : player.id;
+    return id != null ? String(id) : '';
   }
 
   function decorate(board) {
