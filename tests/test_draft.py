@@ -5,9 +5,11 @@ invisible in round 1 and wrong in every round after it, and during a live draft
 that means showing someone else's roster as yours.
 """
 
+import json
+
 import pytest
 
-from sleeper_draft_plan_companion import draft
+from sleeper_draft_plan_companion import draft, plan
 
 TEAMS = 12
 ROUNDS = 15
@@ -70,6 +72,11 @@ def _pick(pick_no, slot, first, last, position):
         "draft_slot": slot,
         "metadata": {"first_name": first, "last_name": last, "position": position, "team": "XX"},
     }
+
+
+def _write_plan_override(data_dir, checkpoints):
+    payload = {"name": "Functional test plan", "checkpoints": checkpoints}
+    (data_dir / plan.OVERRIDE_FILENAME).write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_state_groups_my_roster_and_counts_it(monkeypatch):
@@ -224,10 +231,22 @@ def test_cache_ttl_is_short_enough_for_a_2s_poll():
 
 
 def test_state_reports_the_active_checkpoint_and_shortfall(monkeypatch, tmp_path):
-    """Minimums are cumulative totals, so 'still needed' is the shortfall
-    against the roster you hold -- not a count of picks to spend."""
+    """Checkpoint state is calculated from supplied configuration, not from
+    assumptions about the packaged draft strategy."""
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "10")
+    _write_plan_override(
+        tmp_path,
+        [
+            {
+                "name": "shortfall fixture",
+                "first_round": 1,
+                "last_round": 15,
+                "minimums": {"RB": 2, "WR": 4, "QB": 0, "TE": 0},
+                "lean": "WR",
+            }
+        ],
+    )
 
     # 100 picks made -> round 9. Slot 10 owns picks 10, 15, 34, 39, 58, 63,
     # 82 and 87 by then, so its roster is exactly those eight.
@@ -246,27 +265,35 @@ def test_state_reports_the_active_checkpoint_and_shortfall(monkeypatch, tmp_path
     state = draft.build_state("d1", "wesnicol")
 
     cp = state["checkpoint"]
-    assert cp["name"] == "Flex Filler"
+    assert cp["name"] == "shortfall fixture"
     assert cp["minimums"] == {"RB": 2, "WR": 4, "QB": 0, "TE": 0}
     assert state["my_counts"] == {"QB": 1, "RB": 2, "WR": 3, "TE": 2}
-    # RB minimum is met, WR is one short of 4. Zero QB/TE minimums must not
-    # appear as needs even though those positions are represented on the roster.
     assert cp["still_needed"] == {"WR": 1}
     assert cp["lean"] == "WR"
 
 
-def test_state_has_no_checkpoint_past_the_planned_rounds(monkeypatch, tmp_path):
-    """Round 15 is defense, which is out of scope, so the plan simply ends."""
+def test_state_has_no_checkpoint_past_configured_plan(monkeypatch, tmp_path):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("SLEEPER_DRAFT_SLOT", "10")
-    picks = [_pick(n, slot_for(n), "P", str(n), "RB") for n in range(1, 169)]
+    _write_plan_override(
+        tmp_path,
+        [
+            {
+                "name": "short fixture",
+                "first_round": 1,
+                "last_round": 2,
+                "minimums": {"RB": 1},
+            }
+        ],
+    )
+    picks = [_pick(n, slot_for(n), "P", str(n), "RB") for n in range(1, 25)]
 
     monkeypatch.setattr(draft, "get_draft", lambda _id, fresh=False: _fake_draft())
     monkeypatch.setattr(draft, "get_picks", lambda _id, fresh=False: picks)
 
     state = draft.build_state("d1", "wesnicol")
 
-    assert state["on_the_clock"]["round"] == 15
+    assert state["on_the_clock"]["round"] == 3
     assert state["checkpoint"] is None
 
 
