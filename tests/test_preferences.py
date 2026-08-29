@@ -5,7 +5,7 @@ import pytest
 from sleeper_draft_plan_companion import preferences
 
 
-def test_repository_preference_files_are_structurally_valid():
+def test_repository_preference_files_are_valid():
     player_preferences = preferences.load_player_preferences()
     preferences._validate_player_preferences(player_preferences)
     general_preferences = preferences.load_general_preferences()
@@ -24,7 +24,7 @@ def test_repository_preference_files_are_structurally_valid():
     assert required_model_preferences.issubset(general_preferences)
 
 
-def test_player_flags_parse_without_strategy_assumptions(tmp_path: Path):
+def test_player_flags_parse_safely(tmp_path: Path):
     csv_path = tmp_path / "player-preferences.csv"
     csv_path.write_text(
         "id,Position,Player,Team,starred,do_not_draft\n"
@@ -44,7 +44,7 @@ def test_player_flags_parse_without_strategy_assumptions(tmp_path: Path):
     assert records[30]["do_not_draft"] is False
 
 
-def test_star_and_do_not_draft_are_mutually_exclusive(tmp_path: Path):
+def test_star_dnd_exclusive(tmp_path: Path):
     csv_path = tmp_path / "player-preferences.csv"
     csv_path.write_text(
         "id,Position,Player,Team,starred,do_not_draft\n"
@@ -56,7 +56,7 @@ def test_star_and_do_not_draft_are_mutually_exclusive(tmp_path: Path):
         preferences.load_player_preferences(csv_path)
 
 
-def test_general_preferences_parse_positive_values(tmp_path: Path):
+def test_general_preferences_parse_values(tmp_path: Path):
     csv_path = tmp_path / "general-preferences.csv"
     csv_path.write_text(
         "id,preference_name,preference_value\n"
@@ -71,12 +71,11 @@ def test_general_preferences_parse_positive_values(tmp_path: Path):
     }
 
 
-def test_apply_preferences_only_to_canonical_adp_rows(monkeypatch):
-    monkeypatch.setattr(
-        preferences,
-        "_validate_player_preferences",
-        lambda _records: None,
-    )
+def test_apply_preferences_to_adp_rows(monkeypatch):
+    def skip_validation(_records):
+        return None
+
+    monkeypatch.setattr(preferences, "_validate_player_preferences", skip_validation)
     records = {
         10: {
             "position": "RB",
@@ -112,7 +111,7 @@ def test_apply_preferences_only_to_canonical_adp_rows(monkeypatch):
     assert payload["personal_preferences"]["mutable_in_ui"] is False
 
 
-def test_preference_ui_has_no_runtime_mutation_controls():
+def test_ui_has_no_preference_mutation_controls():
     root = Path(__file__).resolve().parents[1]
     stars = (root / "ui" / "board-stars.js").read_text()
     do_not_draft = (root / "ui" / "board-do-not-draft.js").read_text()
