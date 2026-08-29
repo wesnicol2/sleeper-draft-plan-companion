@@ -27,6 +27,24 @@ def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
     assert "sameTeam.length >= 2" in js
 
 
+def test_roster_position_is_preserved_for_symmetric_stack_detection():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "Object.entries(roster || {})" in js
+    assert "position: player.position || position" in js
+    assert "candidate.position === 'QB'" in js
+    assert "rostered.position === 'WR' || rostered.position === 'TE'" in js
+    assert "candidate.position === 'WR' || candidate.position === 'TE'" in js
+    assert "rostered.position === 'QB'" in js
+
+
+def test_same_team_relationship_replaces_redundant_bye_signal():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "const stackMatches = sameTeam.filter" in js
+    assert "const nonStackTeam = sameTeam.filter" in js
+    assert "rostered.team !== player.team && byeWeek(rostered) === week" in js
+    assert "Do not double-count its guaranteed matching bye week" in js
+
+
 def test_contextual_offense_tiers_match_configured_teams():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     assert "TOP_5_OFFENSE_TEAMS = new Set(['LAR', 'BUF', 'DET', 'CIN', 'BAL'])" in js
