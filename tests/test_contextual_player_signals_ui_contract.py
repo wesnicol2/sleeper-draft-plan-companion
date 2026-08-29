@@ -17,7 +17,7 @@ def test_contextual_signal_assets_replace_separate_stack_and_bye_assets():
 
 def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
     js = (ROOT / "ui" / "board-signals.js").read_text()
-    for label in ("NEED", "LEAN", "WEAK", "STACK", "TOP 5 OFF"):
+    for label in ("LEAN", "STACK", "TOP 5 OFF"):
         assert f"'{label}'" in js
     for label in ("TEAM", "TEAM LOAD", "BYE", "BYE LOAD", "BOTTOM 5 OFF"):
         assert f"'{label}'" in js
@@ -25,6 +25,14 @@ def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
     assert "samePositionBye" in js
     assert "sameBye.length >= 2" in js
     assert "sameTeam.length >= 2" in js
+
+
+def test_need_and_positional_strength_do_not_color_player_cards():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "'NEED'" not in js
+    assert "'WEAK'" not in js
+    assert "checkpoint.still_needed" not in js
+    assert "uniqueWeakestPosition" not in js
 
 
 def test_roster_position_is_preserved_for_symmetric_stack_detection():
