@@ -58,8 +58,17 @@
           ' left · ' +
           plural(progress.roundsLeft, 'round') +
           ' left';
+    const progressClass =
+      progress.freePicks > 0
+        ? ' has-free-picks'
+        : progress.freePicks === 0 && progress.requiredPicks > 0
+          ? ' no-free-picks'
+          : '';
     needsEl.innerHTML =
-      '<span class="checkpoint-progress-pill">' + progressText + '</span>' + needsEl.innerHTML;
+      '<span class="checkpoint-progress-pill' + progressClass + '">' +
+      progressText +
+      '</span>' +
+      needsEl.innerHTML;
   };
 
   window.checkpointProgress = checkpointProgress;
