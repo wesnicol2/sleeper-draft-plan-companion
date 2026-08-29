@@ -3,4 +3,17 @@ NOTE: This regex find and replace can be used to translate the copied and pasted
 
 TODO: Implement scraping from that site instead of copy and paste
 
+find:
 (\d+)\s+([A-Z]+)[\s\n]+(\d+)[\s\n]+([^●]+?)[\s\n]+●[\s\n]+([A-Z]+)[\s\n]+([\s\S]+?)[\s\n]+([+-]\d+)?[\s\n]*(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)[\s\n]+(—|\d+\.\d+)
+
+replace with: 
+$1,$2,$4,$5,$8,$9,$10,$11
+
+
+THEN (to fix the players without pictures):
+
+find:
+(^\d+,[A-Z]{2},)[A-Z]{2}\n
+
+replace: 
+$1
