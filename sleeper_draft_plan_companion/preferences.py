@@ -162,11 +162,11 @@ def _apply_dart_throws(
 
 def _dart_throw_eligible(payload: dict[str, Any]) -> bool:
     summary = payload.get("positional_strength") or {}
-    return all(
-        float((summary.get(position) or {}).get("strength") or 0.0)
-        >= DART_THROW_STRENGTH_THRESHOLD
-        for position in TRACKED_POSITIONS
-    )
+    for position in TRACKED_POSITIONS:
+        value = float((summary.get(position) or {}).get("strength") or 0.0)
+        if value < DART_THROW_STRENGTH_THRESHOLD:
+            return False
+    return True
 
 
 def apply_player_preferences(
