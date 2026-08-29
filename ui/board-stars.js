@@ -26,6 +26,22 @@
     return id != null ? String(id) : '';
   }
 
+  function starCell(key) {
+    return Array.from(document.querySelectorAll('#boardGrid .granked'))
+      .find(cell => cell.dataset.starPlayerId === key);
+  }
+
+  function updateCell(key, active) {
+    const cell = starCell(key);
+    if (!cell) return;
+    const button = cell.querySelector('.player-star');
+    cell.classList.toggle('starred-player', active);
+    if (!button) return;
+    button.textContent = active ? '★' : '☆';
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    button.title = active ? 'Remove star' : 'Star player';
+  }
+
   function decorate(board) {
     const ranked = board && board.ranked || [];
     const cells = document.querySelectorAll('#boardGrid .granked');
@@ -55,13 +71,22 @@
     const key = cell && cell.dataset.starPlayerId;
     if (!key) return;
 
-    if (stars.has(key)) stars.delete(key); else stars.add(key);
+    if (stars.has(key)) {
+      stars.delete(key);
+    } else {
+      stars.add(key);
+      document.dispatchEvent(new CustomEvent('draft-companion-player-starred', { detail: { key } }));
+    }
     saveStars();
-    const active = stars.has(key);
-    cell.classList.toggle('starred-player', active);
-    button.textContent = active ? '★' : '☆';
-    button.setAttribute('aria-pressed', active ? 'true' : 'false');
-    button.title = active ? 'Remove star' : 'Star player';
+    updateCell(key, stars.has(key));
+  });
+
+  document.addEventListener('draft-companion-player-do-not-draft', event => {
+    const key = event.detail && String(event.detail.key || '');
+    if (!key || !stars.has(key)) return;
+    stars.delete(key);
+    saveStars();
+    updateCell(key, false);
   });
 
   window.decoratePlayerStars = decorate;
