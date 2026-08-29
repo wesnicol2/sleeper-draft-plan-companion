@@ -217,15 +217,17 @@ A generic same-team penalty treats very different roster relationships as if
 they were equal. Current color weights therefore distinguish them:
 
 - same-team, same-position overlap = one `TEAM×2` badge with negative weight 2;
-- same-team, different-position overlap outside a pass stack = `TEAM`, weight 1;
+- same-team, different-position overlap outside a pass stack and outside an
+  RB + QB/WR/TE pairing = `TEAM`, weight 1;
 - same-team QB + WR/TE = positive `STACK`;
-- same-team QB + RB = neutral: no STACK, no TEAM penalty, and no contribution to
-  TEAM LOAD.
+- same-team RB + QB/WR/TE = neutral: no STACK, no TEAM penalty, and no
+  contribution to TEAM LOAD.
 
 The doubled same-position weight expresses that two WRs competing inside one
 passing offense is more concerning than, for example, a WR and TE sharing that
-offense. The weight affects color saturation while the badge remains a single
-explainable relationship.
+offense. RB + RB is still same-position overlap and therefore remains `TEAM×2`.
+The weight affects color saturation while the badge remains a single explainable
+relationship.
 
 Bye conflicts are intentionally narrow: only an exact same-position player can
 create BYE/BYE LOAD. A same-team relationship already has its own team signal, so
@@ -331,8 +333,9 @@ private home-server Test container has already pulled and been exercised.
 - **Browser-local recommendation settings create environment drift.** Stars,
   Do Not Draft, strength parameters, and Dart Throw candidates belong in the
   repository when cross-environment consistency is the goal.
-- **A QB/RB same-team relationship is not automatically good or bad.** Keep it
-  neutral unless a separate evidence-backed signal is added later.
+- **An RB paired with a same-team QB, WR, or TE is not automatically good or
+  bad.** Keep those cross-position RB relationships neutral unless a separate
+  evidence-backed signal is added later.
 - **Same-position team overlap is meaningfully stronger than cross-position
   overlap.** Use signal weight, not duplicate hidden badges, to encode that.
 - **Dart Throw ordering is intentionally not ADP ordering.** Do not draw ADP
