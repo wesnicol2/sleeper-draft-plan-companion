@@ -2,8 +2,8 @@
 
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft as it happens, compares it against the configured draft plan, ranks the
-available pool, and adds explainable **Cost of waiting** context directly to the
-main draft board for the four tracked positions.
+available pool, and adds explainable **Cost of waiting** and roster-context
+signals directly to the main draft board for the four tracked positions.
 
 What it should eventually do is specified in
 [docs/draft-companion-planning/](docs/draft-companion-planning/); what it does
@@ -101,9 +101,10 @@ Top to bottom:
 | **Ranked** | The next 32 best undrafted players, one player per rank row |
 
 The ranked band always shows up to **32 available players**; checkpoint length no
-longer controls that horizon. Ordinary ranked rows stay intentionally quiet.
-Cost of waiting is concentrated on the best current static-ADP player at each
-position and the fallback projected at the user's next pick.
+longer controls that horizon. Ranked cards carry compact contextual-signal badges
+and a background tint derived from their positive/negative roster fit. Cost of
+waiting is concentrated on the best current static-ADP player at each position
+and the fallback projected at the user's next pick.
 
 For each QB/RB/WR/TE anchor, the board shows the fallback player's name, how many
 current board spots lower that fallback sits, and the static-ADP deterioration.
@@ -121,8 +122,42 @@ The existing board may use Sleeper `search_rank` as a fallback for unmatched
 players; `/rankings` exposes `rank_source` and `rank_value` so that fallback is
 visible rather than implicit.
 
-The checkpoint system remains intact. Cost of waiting and weighted strength are
-additional decision context, not replacements for checkpoint minimums.
+The checkpoint system remains intact. Cost of waiting, weighted strength, and
+contextual signals are additional decision context, not replacements for
+checkpoint minimums or canonical ranking.
+
+## Contextual player signals
+
+Contextual signals describe how a candidate fits the roster and active draft
+plan. They are presentation-only: they do not change canonical rank, Cost of
+waiting, or the checkpoint calculations.
+
+Positive signals currently include:
+
+- `NEED` — fills an outstanding checkpoint positional need;
+- `LEAN` — matches the checkpoint lean;
+- `WEAK` — plays the uniquely weakest current position by weighted strength;
+- `STACK` — creates a same-team QB + WR/TE stack with a rostered player.
+
+Negative signals currently include:
+
+- `BYE` — conflicts with a rostered same-position player's bye week;
+- `BYE LOAD` — would put at least three rostered players on the same bye week;
+- `TEAM` — overlaps with a rostered player from the same NFL team outside a
+  QB + WR/TE stack relationship;
+- `TEAM LOAD` — would put at least three players from the same NFL team on the
+  roster.
+
+Every signal stays visible as a compact `+` or `−` badge with an explanatory
+tooltip. Card background color summarizes the balance. Three signals saturate
+each side: one positive signal gives a light green tint, three or more positive
+signals with no negatives produce full green, three or more negatives with no
+positives produce full red, and strong positive plus strong negative context
+converges on brown. Mixed unequal cases blend brown toward the dominant side.
+
+Do Not Draft is intentionally stronger than contextual coloring. A blocked card
+uses the dedicated full-red treatment and hides all secondary information except
+the player name and unblock control.
 
 ## Cost of waiting
 
@@ -210,7 +245,7 @@ button is an escape hatch and sends `?fresh=1` for live draft state.
   - `decision.py` — deterministic Cost of waiting context.
   - `strength.py` — inverse-square roster-strength calculation.
 - `resources/adp.csv` — canonical static ADP input.
-- `ui/` — plain HTML/CSS/vanilla JS; no build step.
+- `ui/` — plain HTML/CSS/vanilla JS; `board-signals.js` owns contextual signal presentation; no build step.
 - `tests/` — unit tests.
 - `docs/` — human-owned long-form planning/specification documents.
 
