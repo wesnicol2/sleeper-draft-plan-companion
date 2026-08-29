@@ -5,36 +5,47 @@ import pytest
 from sleeper_draft_plan_companion import preferences
 
 
-def test_repository_preference_files_are_valid():
-    player_preferences = preferences.load_player_preferences()
-    preferences._validate_player_preferences(player_preferences)
-    general_preferences = preferences.load_general_preferences()
+def _write(path: Path, content: str) -> None:
+    path.write_text(content, encoding="utf-8")
 
-    assert player_preferences
-    for record in player_preferences.values():
+
+def _skip_validation(_records) -> None:
+    return None
+
+
+def _preference(starred=False, do_not_draft=False):
+    return {
+        "position": "RB",
+        "player": "Player",
+        "team": "AAA",
+        "starred": starred,
+        "do_not_draft": do_not_draft,
+    }
+
+
+def test_repository_preference_files_are_valid():
+    players = preferences.load_player_preferences()
+    preferences._validate_player_preferences(players)
+    general = preferences.load_general_preferences()
+
+    assert players
+    for record in players.values():
         assert isinstance(record["starred"], bool)
         assert isinstance(record["do_not_draft"], bool)
-    required_model_preferences = {
-        "alpha",
-        "beta_QB",
-        "beta_RB",
-        "beta_WR",
-        "beta_TE",
-    }
-    assert required_model_preferences.issubset(general_preferences)
+    for key in ("alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"):
+        assert key in general
 
 
 def test_player_flags_parse_safely(tmp_path: Path):
-    csv_path = tmp_path / "player-preferences.csv"
-    csv_path.write_text(
-        "id,Position,Player,Team,starred,do_not_draft\n"
-        "10,RB,Player A,AAA,1,0\n"
-        "20,WR,Player B,BBB,0,1\n"
-        "30,QB,Player C,CCC,0,0A\n",
-        encoding="utf-8",
-    )
+    path = tmp_path / "player-preferences.csv"
+    content = """id,Position,Player,Team,starred,do_not_draft
+10,RB,Player A,AAA,1,0
+20,WR,Player B,BBB,0,1
+30,QB,Player C,CCC,0,0A
+"""
+    _write(path, content)
 
-    records = preferences.load_player_preferences(csv_path)
+    records = preferences.load_player_preferences(path)
 
     assert records[10]["starred"] is True
     assert records[10]["do_not_draft"] is False
@@ -45,52 +56,36 @@ def test_player_flags_parse_safely(tmp_path: Path):
 
 
 def test_star_dnd_exclusive(tmp_path: Path):
-    csv_path = tmp_path / "player-preferences.csv"
-    csv_path.write_text(
-        "id,Position,Player,Team,starred,do_not_draft\n"
-        "10,RB,Player A,AAA,1,1\n",
-        encoding="utf-8",
-    )
+    path = tmp_path / "player-preferences.csv"
+    content = """id,Position,Player,Team,starred,do_not_draft
+10,RB,Player A,AAA,1,1
+"""
+    _write(path, content)
 
     with pytest.raises(ValueError, match="cannot be both"):
-        preferences.load_player_preferences(csv_path)
+        preferences.load_player_preferences(path)
 
 
 def test_general_preferences_parse_values(tmp_path: Path):
-    csv_path = tmp_path / "general-preferences.csv"
-    csv_path.write_text(
-        "id,preference_name,preference_value\n"
-        "1,alpha,0.3\n"
-        "2,beta_RB,1.2\n",
-        encoding="utf-8",
-    )
+    path = tmp_path / "general-preferences.csv"
+    content = """id,preference_name,preference_value
+1,alpha,0.3
+2,beta_RB,1.2
+"""
+    _write(path, content)
 
-    assert preferences.load_general_preferences(csv_path) == {
-        "alpha": 0.3,
-        "beta_RB": 1.2,
-    }
+    values = preferences.load_general_preferences(path)
+
+    assert values["alpha"] == 0.3
+    assert values["beta_RB"] == 1.2
 
 
 def test_apply_preferences_to_adp_rows(monkeypatch):
-    def skip_validation(_records):
-        return None
-
-    monkeypatch.setattr(preferences, "_validate_player_preferences", skip_validation)
+    validator = "_validate_player_preferences"
+    monkeypatch.setattr(preferences, validator, _skip_validation)
     records = {
-        10: {
-            "position": "RB",
-            "player": "Player A",
-            "team": "AAA",
-            "starred": True,
-            "do_not_draft": False,
-        },
-        20: {
-            "position": "WR",
-            "player": "Player B",
-            "team": "BBB",
-            "starred": False,
-            "do_not_draft": True,
-        },
+        10: _preference(starred=True),
+        20: _preference(do_not_draft=True),
     }
     payload = {
         "ranked": [
