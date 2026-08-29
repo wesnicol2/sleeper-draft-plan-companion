@@ -1,12 +1,24 @@
-#boardMeta.checkpoint-progress-meta {
+.checkpoint-progress-summary {
+  align-items: center;
+  justify-content: center;
+  min-height: 2.3rem;
+  border: 1px solid var(--edge);
+  background: rgba(139, 148, 158, 0.12);
+  color: var(--text);
+  font-size: 0.82rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
-#boardMeta.checkpoint-progress-meta.has-free-picks {
+.checkpoint-progress-summary.has-free-picks {
+  border-color: rgba(63, 185, 80, 0.55);
+  background: rgba(63, 185, 80, 0.14);
   color: var(--ok);
 }
 
-#boardMeta.checkpoint-progress-meta.no-free-picks {
+.checkpoint-progress-summary.no-free-picks {
+  border-color: rgba(240, 160, 32, 0.6);
+  background: rgba(240, 160, 32, 0.15);
   color: #f0a020;
 }
