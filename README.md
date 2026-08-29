@@ -137,7 +137,9 @@ Positive signals currently include:
 - `NEED` — fills an outstanding checkpoint positional need;
 - `LEAN` — matches the checkpoint lean;
 - `WEAK` — plays the uniquely weakest current position by weighted strength;
-- `STACK` — creates a same-team QB + WR/TE stack with a rostered player.
+- `STACK` — creates a same-team QB + WR/TE stack with a rostered player;
+- `TOP 5 OFF` — plays for one of the configured top-five offenses: Rams, Bills,
+  Lions, Bengals, or Ravens.
 
 Negative signals currently include:
 
@@ -146,7 +148,9 @@ Negative signals currently include:
 - `TEAM` — overlaps with a rostered player from the same NFL team outside a
   QB + WR/TE stack relationship;
 - `TEAM LOAD` — would put at least three players from the same NFL team on the
-  roster.
+  roster;
+- `BOTTOM 5 OFF` — plays for one of the configured bottom-five offenses: Raiders,
+  Dolphins, Browns, Cardinals, or Jets.
 
 Every signal stays visible as a compact `+` or `−` badge with an explanatory
 tooltip. Card background color summarizes the balance. Three signals saturate
