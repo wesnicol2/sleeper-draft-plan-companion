@@ -1,17 +1,14 @@
-// The app takes no input during a draft, so everything refreshes on a timer.
-// See AGENTS.md, "No user interaction during the draft".
-// Poll rate follows the draft. While picks are landing you want the board
-// current; a completed or unstarted draft changes nothing, so hammering it is
-// pure waste. See AGENTS.md, "No user interaction during the draft" -- the
-// Refresh button is an escape hatch, not the intended way to stay current.
+// The app takes almost no input during a draft, so everything refreshes on a timer.
+// Draft selection, manual Refresh, and the late-draft Dart Throw view are deliberate
+// exceptions; personal preference state itself remains repository-owned.
 const POLL_ACTIVE_MS = 2000;
 const POLL_IDLE_MS = 10000;
-// The player file changes about once a day; polling it with the draft was
-// ~12 pointless requests a minute.
 const PLAYERS_POLL_MS = 300000;
 let pollTimer = null;
 let lastStatus = '';
 const STORE_KEY = 'draftId';
+let lastBoardPayload = null;
+let dartThrowMode = false;
 
 // Selection lives in the URL so a screen can be shared or bookmarked, and in
 // localStorage so a reload keeps it. The server stays stateless; when neither
@@ -29,6 +26,7 @@ function selectDraft(id) {
   history.replaceState(null, '', url);
   renderDraftList(lastDrafts);
   lastStatus = '';
+  dartThrowMode = false;
   tick(true);
 }
 
@@ -167,7 +165,7 @@ function renderBoard(b) {
   const cp = b.checkpoint;
   const needs = (cp && cp.still_needed) || {};
   const ranked = b.ranked || [];
-  const rows = b.rows || ranked.length;
+  const rows = ranked.length;
   const draftedRows = Math.max(0, ...columns.map(p => (roster[p] || []).length));
   const needRows = cp ? Math.max(1, ...Object.values(needs)) : 0;
   const colOf = p => columns.indexOf(p) + 2;
@@ -200,7 +198,7 @@ function renderBoard(b) {
     });
   }
   const critMax = b.criteria_max || 1;
-  out.push(cell(rankedStart, 1, 'gcell gutter', 'RANKED', rows));
+  out.push(cell(rankedStart, 1, 'gcell gutter', b.dart_throw_active ? 'DART THROWS' : 'RANKED', Math.max(rows, 1)));
   for (let i = 0; i < rows; i++) {
     const p = ranked[i];
     columns.forEach(q => {
@@ -209,10 +207,55 @@ function renderBoard(b) {
       out.push(cell(rankedStart + i, colOf(q), 'gcell gplayer granked crit' + (met ? (met >= critMax ? '-full' : '-part') : '-none'), '<span class="prank">' + esc(p.rank) + '</span>' + playerCell(p) + (met ? '<span class="pcrit">' + met + '/' + critMax + '</span>' : '')));
     });
   }
+  if (!rows) {
+    out.push(cell(rankedStart, '2 / -1', 'gcell gblank', b.dart_throw_active ? 'No configured dart throws are currently available.' : 'No available players.'));
+  }
   grid.style.gridTemplateColumns = 'auto repeat(' + columns.length + ', minmax(0, 1fr))';
   grid.innerHTML = out.join('');
   if (window.decoratePlayerStars) window.decoratePlayerStars(b);
-  document.getElementById('boardMeta').textContent = cp ? cp.name + ' · ' + rows + ' picks left in it' : 'no plan for this round · showing ' + rows;
+  document.getElementById('boardMeta').textContent = b.dart_throw_active
+    ? 'DART THROW mode · ' + rows + ' available'
+    : (cp ? cp.name + ' · ' : '') + rows + ' available players';
+}
+
+function dartThrowEligible(board) {
+  return Boolean(board && board.dart_throw_mode && board.dart_throw_mode.eligible);
+}
+
+function boardForCurrentMode(board) {
+  const eligible = dartThrowEligible(board);
+  const toggle = document.getElementById('dartThrowToggle');
+  if (!eligible) dartThrowMode = false;
+  toggle.hidden = !eligible;
+  toggle.setAttribute('aria-pressed', dartThrowMode ? 'true' : 'false');
+  toggle.textContent = dartThrowMode ? 'Normal draft mode' : 'DART THROW mode';
+  toggle.classList.toggle('active', dartThrowMode);
+
+  if (!dartThrowMode) return board;
+  const dartThrows = (board.ranked || [])
+    .filter(player => player.dart_throw_order != null)
+    .sort((a, b) => a.dart_throw_order - b.dart_throw_order);
+  return {
+    ...board,
+    ranked: dartThrows,
+    rows: dartThrows.length,
+    dart_throw_active: true,
+  };
+}
+
+function renderLastBoard() {
+  if (!lastBoardPayload) return;
+  const note = document.getElementById('boardNote');
+  const view = boardForCurrentMode(lastBoardPayload);
+  renderBoard(view);
+  if (view.dart_throw_active) {
+    const unmatched = (view.dart_throw_mode && view.dart_throw_mode.unmatched) || [];
+    note.textContent = 'Dart Throw mode shows only repository-configured upside bets in fixed order. ' +
+      'The note on each card is the stored rationale.' +
+      (unmatched.length ? ' Not currently matched in Sleeper: ' + unmatched.join(', ') + '.' : '');
+  } else {
+    note.textContent = lastBoardPayload.board_error || '';
+  }
 }
 
 async function pollBoard(fresh) {
@@ -226,13 +269,16 @@ async function pollBoard(fresh) {
     const res = await fetch('/board' + (qs ? '?' + qs : ''), { cache: 'no-store' });
     const b = await res.json();
     if (!res.ok || !b.configured || b.error) {
+      lastBoardPayload = null;
+      dartThrowMode = false;
+      document.getElementById('dartThrowToggle').hidden = true;
       document.getElementById('boardGrid').innerHTML = '';
       document.getElementById('boardMeta').textContent = '';
       note.textContent = b.detail || b.error || 'board unavailable';
       return;
     }
-    renderBoard(b);
-    note.textContent = b.board_error || '';
+    lastBoardPayload = b;
+    renderLastBoard();
   } catch (err) { note.textContent = 'board unavailable'; }
 }
 
@@ -285,6 +331,12 @@ document.getElementById('refresh').addEventListener('click', async () => {
   clearTimeout(pollTimer);
   await tick(true);
   btn.disabled = false;
+});
+
+document.getElementById('dartThrowToggle').addEventListener('click', () => {
+  if (!dartThrowEligible(lastBoardPayload)) return;
+  dartThrowMode = !dartThrowMode;
+  renderLastBoard();
 });
 
 document.getElementById('draftIdOpen').addEventListener('click', () => {

@@ -7,7 +7,6 @@ from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
 TIE_BREAK_ORDER = ("RB", "WR", "TE", "QB")
-BOARD_ROWS = 32
 CRITERIA = ("matches the checkpoint's lean",)
 
 
@@ -33,8 +32,8 @@ def criteria_count(position: str, lean: str | None) -> int:
     return int(position == lean)
 
 
-def ranked_pool(players, taken_ids, limit, adp_index=None, season=None):
-    if limit < 1:
+def ranked_pool(players, taken_ids, limit=None, adp_index=None, season=None):
+    if limit is not None and limit < 1:
         return []
     adp_index = adp_index or {}
     pool = []
@@ -50,11 +49,17 @@ def ranked_pool(players, taken_ids, limit, adp_index=None, season=None):
             sort_key, source, value = (0, adp_rank, player_id), "adp", adp_rank
         else:
             search_rank = player.get("search_rank")
-            if search_rank is None or search_rank > 100000:
-                continue
-            sort_key, source, value = (1, search_rank, player_id), "search_rank", search_rank
+            if search_rank is not None and search_rank <= 100000:
+                sort_key, source, value = (1, search_rank, player_id), "search_rank", search_rank
+            else:
+                name = (
+                    player.get("full_name")
+                    or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+                )
+                sort_key, source, value = (2, name.lower(), player_id), "unranked", None
         pool.append((sort_key, player_id, player, source, value))
     pool.sort(key=lambda item: item[0])
+    selected = pool if limit is None else pool[:limit]
     return [
         {
             "rank": index,
@@ -68,7 +73,7 @@ def ranked_pool(players, taken_ids, limit, adp_index=None, season=None):
             "rank_source": source,
             "rank_value": value,
         }
-        for index, (_key, player_id, player, source, value) in enumerate(pool[:limit], start=1)
+        for index, (_key, player_id, player, source, value) in enumerate(selected, start=1)
     ]
 
 
@@ -220,7 +225,6 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     checkpoint = state.get("checkpoint")
     counts = state.get("my_counts") or {}
     needs = (checkpoint or {}).get("still_needed") or {}
-    rows = BOARD_ROWS
     try:
         players, _fetched_at = sleeper.load_players()
     except Exception as exc:
@@ -230,7 +234,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
                 "columns": order_columns(counts, needs),
                 "ranked": [],
                 "criteria_max": len(CRITERIA),
-                "rows": rows,
+                "rows": 0,
                 "decision_context": [],
                 "decision_rules": decision.decision_rules(),
                 "future_pick_markers": [],
@@ -258,7 +262,13 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
         future_picks[0] - current_pick if future_picks and current_pick is not None else None
     )
     lean = (checkpoint or {}).get("lean")
-    ranked = ranked_pool(players, taken, rows, rank_index, season=state.get("season"))
+    ranked = ranked_pool(
+        players,
+        taken,
+        limit=None,
+        adp_index=rank_index,
+        season=state.get("season"),
+    )
     positions_by_player = {pid: player.get("position") for pid, player in players.items()}
     current_model = {
         "positions": state["positional_strength"],
@@ -306,7 +316,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
             "columns": order_columns(counts, needs, strengths),
             "ranked": ranked,
             "criteria_max": len(CRITERIA),
-            "rows": rows,
+            "rows": len(ranked),
             "plan_last_round": plan_module.last_planned_round(plan_module.load_plan()),
         }
     )
@@ -345,17 +355,21 @@ def explain_rankings(draft_id, limit=40, fresh=False):
                 "ties": counts_by_value[(entry["rank_source"], entry["rank_value"])],
             }
         )
-    from_adp = sum(1 for row in rows if row["rank_source"] == "adp")
+    ranked_by = {
+        source: sum(1 for row in rows if row["rank_source"] == source)
+        for source in ("adp", "search_rank", "unranked")
+    }
     return {
         "draft_id": draft_id,
         "scoring": None,
         "adp_error": adp_error,
         "adp_players_matched": len(adp_index),
         "shown": len(rows),
-        "ranked_by": {"adp": from_adp, "search_rank": len(rows) - from_adp},
+        "ranked_by": ranked_by,
         "note": (
             "rank_source says which value decided the row. CSV ADP uses the rank in "
-            "resources/adp.csv; search_rank is only the fallback."
+            "resources/adp.csv; search_rank is the fallback; unranked active players "
+            "are kept at the end so the live board never hides an available tracked player."
         ),
         "rows": rows,
     }

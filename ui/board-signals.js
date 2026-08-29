@@ -30,8 +30,14 @@
     return false;
   }
 
-  function signal(polarity, key, label, detail) {
-    return { polarity, key, label, detail };
+  function isNeutralTeamPair(candidate, rostered) {
+    if (!candidate || !rostered || !candidate.team || candidate.team !== rostered.team) return false;
+    const positions = new Set([candidate.position, rostered.position]);
+    return positions.size === 2 && positions.has('QB') && positions.has('RB');
+  }
+
+  function signal(polarity, key, label, detail, weight = 1) {
+    return { polarity, key, label, detail, weight };
   }
 
   function playerSignals(player, board) {
@@ -59,13 +65,31 @@
       signals.push(signal('positive', 'stack', 'STACK', 'Same-team QB + WR/TE stack with ' + names + ' (' + player.team + ')'));
     }
 
-    const nonStackTeam = sameTeam.filter((rostered) => !isPassStackPair(player, rostered));
+    // QB + RB on the same team is deliberately neutral. Other non-stack team
+    // overlap is negative, with same-position duplication weighted twice as
+    // strongly as cross-position overlap (for example WR+WR > WR+TE).
+    const nonStackTeam = sameTeam.filter(
+      (rostered) => !isPassStackPair(player, rostered) && !isNeutralTeamPair(player, rostered)
+    );
     if (nonStackTeam.length) {
       const names = nonStackTeam.map((rostered) => rostered.name || rostered.position).join(' + ');
-      signals.push(signal('negative', 'team', 'TEAM', 'Same-team roster overlap with ' + names + ' (' + player.team + ') outside a QB + WR/TE stack'));
+      const samePosition = nonStackTeam.some((rostered) => rostered.position === player.position);
+      const weight = samePosition ? 2 : 1;
+      signals.push(signal(
+        'negative',
+        samePosition ? 'team-same-position' : 'team',
+        samePosition ? 'TEAM×2' : 'TEAM',
+        (samePosition ? 'Same-position same-team overlap' : 'Same-team cross-position overlap') +
+          ' with ' + names + ' (' + player.team + ')',
+        weight
+      ));
     }
-    if (sameTeam.length >= 2) {
-      signals.push(signal('negative', 'team-load', 'TEAM LOAD', 'Drafting this player would put at least three players from ' + player.team + ' on the roster'));
+
+    const coloredTeamRelationships = sameTeam.filter(
+      (rostered) => !isNeutralTeamPair(player, rostered)
+    );
+    if (coloredTeamRelationships.length >= 2) {
+      signals.push(signal('negative', 'team-load', 'TEAM LOAD', 'Drafting this player would create at least three color-relevant players from ' + player.team + ' on the roster'));
     }
 
     const week = byeWeek(player);
@@ -111,7 +135,7 @@
       const badge = document.createElement('span');
       badge.className = 'context-signal context-signal-' + item.polarity;
       badge.textContent = (item.polarity === 'positive' ? '+' : '−') + item.label;
-      badge.title = item.detail;
+      badge.title = item.detail + (item.weight > 1 ? ' · color weight ' + item.weight : '');
       strip.appendChild(badge);
     });
     cell.appendChild(strip);
@@ -125,8 +149,12 @@
       const cell = cells[index];
       if (!cell) return;
       const signals = playerSignals(player, board);
-      const positiveCount = signals.filter((item) => item.polarity === 'positive').length;
-      const negativeCount = signals.filter((item) => item.polarity === 'negative').length;
+      const positiveCount = signals
+        .filter((item) => item.polarity === 'positive')
+        .reduce((total, item) => total + item.weight, 0);
+      const negativeCount = signals
+        .filter((item) => item.polarity === 'negative')
+        .reduce((total, item) => total + item.weight, 0);
 
       cell.classList.add('context-signal-card');
       cell.style.setProperty('--signal-bg', mixColor(positiveCount, negativeCount));

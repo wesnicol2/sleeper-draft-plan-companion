@@ -1,4 +1,4 @@
-"""Tests for static CSV ADP loading, player matching, and board size."""
+"""Tests for static CSV ADP loading, player matching, and board coverage."""
 
 from sleeper_draft_plan_companion import adp, board
 
@@ -178,7 +178,7 @@ def test_build_adp_index_skips_unmatched_players():
     assert adp.build_adp_index(records, players) == {}
 
 
-def test_board_keeps_32_available_players_when_pool_has_enough():
+def test_board_returns_every_available_player_without_cap():
     players = {
         str(index): {
             "full_name": f"Player {index}",
@@ -192,8 +192,46 @@ def test_board_keeps_32_available_players_when_pool_has_enough():
     adp_index = {str(index): index for index in range(1, 41)}
     taken = {"1", "2", "3"}
 
-    ranked = board.ranked_pool(players, taken, board.BOARD_ROWS, adp_index)
+    ranked = board.ranked_pool(players, taken, None, adp_index)
 
-    assert board.BOARD_ROWS == 32
-    assert len(ranked) == 32
-    assert [player["player_id"] for player in ranked] == [str(index) for index in range(4, 36)]
+    assert len(ranked) == 37
+    assert [player["player_id"] for player in ranked] == [str(index) for index in range(4, 41)]
+
+
+def test_ranked_pool_keeps_unranked_active_players_at_the_end():
+    players = {
+        "adp": {
+            "full_name": "ADP Player",
+            "position": "RB",
+            "team": "AAA",
+            "active": True,
+            "search_rank": 99,
+        },
+        "search": {
+            "full_name": "Search Player",
+            "position": "WR",
+            "team": "BBB",
+            "active": True,
+            "search_rank": 12,
+        },
+        "deep": {
+            "full_name": "Deep Player",
+            "position": "TE",
+            "team": "CCC",
+            "active": True,
+            "search_rank": None,
+        },
+        "inactive": {
+            "full_name": "Inactive Player",
+            "position": "QB",
+            "team": "DDD",
+            "active": False,
+            "search_rank": 1,
+        },
+    }
+
+    ranked = board.ranked_pool(players, set(), None, {"adp": 50})
+
+    assert [player["player_id"] for player in ranked] == ["adp", "search", "deep"]
+    assert [player["rank_source"] for player in ranked] == ["adp", "search_rank", "unranked"]
+    assert ranked[-1]["rank_value"] is None

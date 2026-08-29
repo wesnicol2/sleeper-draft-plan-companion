@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/ui/board-signals.css">
   <link rel="stylesheet" href="/ui/board-do-not-draft.css">
   <link rel="stylesheet" href="/ui/board-stars.css">
+  <link rel="stylesheet" href="/ui/board-dart-throws.css">
 </head>
 <body>
   <header>
@@ -21,11 +22,15 @@
   <main>
     <!-- The board is the app; everything under .diagnostics is there to explain
          the board when it looks wrong. All of it is driven by the poll in
-         script.js so the page never needs interaction. -->
+         script.js so normal draft use requires almost no interaction. -->
     <section class="card board">
       <div class="cardhead">
         <h2>Board</h2>
         <span class="muted" id="boardMeta">&nbsp;</span>
+        <button id="dartThrowToggle" type="button" class="dart-toggle" hidden
+                aria-pressed="false" title="Show only configured late-draft upside bets">
+          DART THROW mode
+        </button>
         <button id="refresh" type="button" class="refresh" title="Fetch now, ignoring the cache">
           Refresh
         </button>
@@ -41,6 +46,7 @@
         <span><strong>green → brown → red</strong> contextual signal balance</span>
         <span><strong>★</strong> starred target</span>
         <span><strong>⊘</strong> do not draft</span>
+        <span><strong>DART THROW</strong> fixed-order upside view after all positions reach 1.00 strength</span>
       </div>
       <p class="muted" id="boardNote">&nbsp;</p>
     </section>
@@ -100,5 +106,6 @@
   <script src="/ui/board-signals.js"></script>
   <script src="/ui/board-do-not-draft.js"></script>
   <script src="/ui/board-stars.js"></script>
+  <script src="/ui/board-dart-throws.js"></script>
 </body>
 </html>

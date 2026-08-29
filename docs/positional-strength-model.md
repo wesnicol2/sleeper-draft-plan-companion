@@ -2,214 +2,95 @@
 
 ## Status
 
-This document specifies the proposed replacement for the current inverse-square
-weighted positional-strength model. It is a mathematical and product spec for
-stress testing before implementation. The current code may still use `1 / r²`;
-this document describes the model the implementation should converge toward.
+This document specifies the **implemented** positional-strength model used by the
+live draft board. The original inverse-square draft-round proxy has been retired.
+The current model converts Consensus ADP into market value, derives league-
+relative positional targets, credits the user's starters/FLEX/depth, and reports
+current and hypothetical candidate strength.
 
-The immediate validation method is repeated Sleeper mock drafts with tunable
-parameters exposed in the draft-board UI. The goal is to discover pathological
-behavior and calibrate the small number of explicit model parameters before the
-model is used as a stronger recommendation signal.
+The implementation lives in `sleeper_draft_plan_companion/strength.py`. Runtime
+parameters are repository-backed in `resources/general-preferences.csv`; they are
+not browser-local controls.
 
 ## Goals
 
-The model should answer two related questions during a draft:
+The model answers two related questions:
 
-1. **How strong is the current roster at each position relative to an ideal,
-   league-specific finished starting lineup?**
-2. **If a displayed candidate were drafted now, what would the resulting
-   positional strength be?**
+1. How strong is the current roster at QB, RB, WR, and TE relative to a
+   league-specific finished-roster target?
+2. If a displayed candidate were drafted, what would the resulting strength of
+   that candidate's position be?
 
-The number must be directly comparable between the position header and player
-cards. A candidate card therefore shows both the hypothetical ending positional
-strength and the change from the current value.
+The header and candidate card use the same scale. A position at `1.00` has
+reached the model's target. Values above `1.00` are valid and are not capped.
 
-Example:
-
-- Current header: `RB Strength 0.68`
-- Candidate card: `RB Strength if drafted 0.94 (+0.26)`
-
-A strength of `1.00` means the roster has reached the model's ideal target value
-for that position. Values greater than `1.00` are allowed and must not be capped.
-
-## Non-goals
-
-This model is intentionally draft-focused and relatively simple.
-
-- It does not use weekly matchup projections.
-- It does not attempt to predict weekly FLEX choices.
-- It does not assign positive starting-strength credit to bench players.
-- It does not model bench ceiling or breakout probability yet.
-- It does not treat draft position in the user's specific draft as player value.
-- It does not make TE FLEX-eligible in this version.
-- It is not WAR, replacement value, or a final unified recommendation score.
-
-Bench ceiling is deliberately left for a separate future signal. A low-floor,
-high-upside bench player may be preferable to a safe low-ceiling player even
-though both contribute `0` to this starting-lineup strength metric.
+The model is draft context, not fantasy points, WAR, or a unified player score.
+It does not change canonical board order, checkpoint minimums, Cost of waiting,
+or contextual card color.
 
 ## Inputs
 
 The model uses:
 
-- league team count `N`
-- required starting slots by position: QB, RB, WR, TE
-- number of FLEX slots
-- rostered players
-- available candidates
-- consensus ADP from `resources/adp.csv`
-- tunable parameters defined below
+- league team count `N`;
+- required starting slots at QB/RB/WR/TE;
+- number of FLEX slots;
+- the user's roster;
+- available candidates;
+- Consensus ADP from `resources/adp.csv`;
+- `alpha`, `beta_QB`, `beta_RB`, `beta_WR`, and `beta_TE` from
+  `resources/general-preferences.csv`.
 
-Sleeper ADP remains appropriate for ordering the visible draft board because it
-approximates what league mates see in Sleeper. **Consensus ADP is the valuation
-input for this model.** A player who falls in the live draft retains the value
-implied by consensus ADP; the fact that the user obtained that player later is a
-separate draft-surplus or "steal" concept and must not inflate positional
-strength a second time.
-
-## Tunable parameters
-
-Every tunable parameter must be visible and adjustable in the UI for mock-draft
-stress testing. The UI should also display a short explanation of what changing
-that parameter means.
-
-| Parameter | Initial value | Purpose |
-| --- | ---: | --- |
-| `alpha` (`α`) | `0.50` | Controls how quickly player market value declines as consensus ADP gets worse. Higher values put more weight on elite early-ADP players. |
-| `beta_QB` (`β_QB`) | `1.00` | Strategic preference multiplier for QB target strength. |
-| `beta_RB` (`β_RB`) | `1.00` | Strategic preference multiplier for RB target strength. |
-| `beta_WR` (`β_WR`) | `1.00` | Strategic preference multiplier for WR target strength. |
-| `beta_TE` (`β_TE`) | `1.00` | Strategic preference multiplier for TE target strength. |
-
-Defaults represent a neutral strategy relative to the market-derived positional
-targets. `beta` values are explicit strategy preferences, not observations about
-player quality.
-
-There is intentionally no FLEX lambda, bench lambda, or TE FLEX discount in
-this version. FLEX weighting is derived from competing RB/WR values; bench
-players contribute no starting-lineup strength; TE is excluded from FLEX.
+Sleeper/static board rank and Consensus ADP have different jobs. The board may
+use canonical static rank and an explicit Sleeper `search_rank` fallback for
+ordering. **Only Consensus ADP feeds this strength model.** A live-draft fall
+therefore does not inflate a player's market value a second time.
 
 ## 1. Player market value
 
-For player `i` with positive consensus ADP `a_i`, define market value:
-
-```text
-V_i = a_i ^ (-alpha)
-```
-
-or mathematically:
+For player `i` with positive Consensus ADP `a_i`:
 
 \[
-V_i = a_i^{-\alpha}
+\boxed{V_i = a_i^{-\alpha}}
 \]
 
-With the initial `α = 0.50`:
+With `alpha = 0.50`, this is `1 / sqrt(a_i)`. The deployed repository may choose
+a different positive `alpha`; the value is loaded from
+`resources/general-preferences.csv`.
+
+Required properties:
+
+- earlier Consensus ADP produces greater market value;
+- value decreases continuously as ADP worsens;
+- early ADP differences matter more than equally sized late differences;
+- missing, invalid, or non-positive Consensus ADP is explicitly unavailable and
+  does not fall back to Sleeper rank.
+
+## 2. League-wide mandatory starter value
+
+For each tracked position `P`, league-wide mandatory demand is:
 
 \[
-V_i = \frac{1}{\sqrt{a_i}}
+D_P = N \times starters_P
 \]
 
-This curve has the desired behavior:
-
-- earlier consensus ADP means greater value;
-- value decreases continuously as ADP gets worse;
-- early ADP differences matter more than equally sized late ADP differences;
-- the curve flattens rather than making later players effectively worthless.
-
-`alpha` exists specifically so mock-draft stress testing can determine whether
-that decay is too steep or too flat.
-
-A missing or invalid consensus ADP cannot silently fall back to Sleeper rank for
-this calculation. The implementation should surface the unavailable value or
-otherwise degrade explicitly.
-
-## 2. Neutral target share `T_P`
-
-`T_P` is the **neutral target share of useful starting-lineup market value for
-position `P`**.
-
-It answers:
-
-> If league-wide starting slots were filled according to consensus ADP, what
-> share of the resulting useful starting-lineup market value would belong to
-> this position?
-
-`T_P` is not the user's current roster share and is not an average historical
-roster. It is derived from the current league structure and current consensus
-market.
-
-### 2.1 Mandatory starter pools
-
-For each position `P`, league-wide mandatory demand is:
-
-```text
-D_P = N * required_starters_P
-```
-
-For example, in a 12-team league with 1 QB, 2 RB, 2 WR, and 1 TE:
-
-```text
-QB demand = 12
-RB demand = 24
-WR demand = 24
-TE demand = 12
-```
-
-Take the top `D_P` players at each position by consensus ADP and sum their
-market values:
+Take the top `D_P` players at that position by Consensus ADP and sum market
+value:
 
 \[
 M_{P,mandatory} = \sum_{i \in StarterPool(P)} V_i
 \]
 
-This naturally makes roster requirements matter. A 3-WR league consumes a
-deeper WR pool than a 2-WR league; a 2-QB league consumes a deeper QB pool than
-a 1-QB league.
+This makes the target respond to league structure. A three-WR league consumes a
+deeper WR pool than a two-WR league; a two-QB league consumes more QB value than
+a one-QB league.
 
-## 3. FLEX allocation
+## 3. League-wide FLEX allocation
 
-Only RB and WR participate in FLEX for this version.
+Only RB and WR participate in FLEX in the current model.
 
-FLEX must not be assigned rigidly to a single position based on a tiny value
-difference. Instead, FLEX share is distributed proportionally to the competing
-RB and WR market values.
-
-For one RB/WR competition with values `V_RB` and `V_WR`:
-
-\[
-p_{RB} = \frac{V_{RB}}{V_{RB} + V_{WR}}
-\]
-
-\[
-p_{WR} = \frac{V_{WR}}{V_{RB} + V_{WR}} = 1 - p_{RB}
-\]
-
-Example:
-
-```text
-RB value = 0.28
-WR value = 0.31
-
-RB FLEX share = 0.28 / (0.28 + 0.31) = 0.4746
-WR FLEX share = 0.31 / (0.28 + 0.31) = 0.5254
-```
-
-The shares sum to `1.0`.
-
-### 3.1 League-wide FLEX target construction
-
-Let:
-
-```text
-D_FLEX = N * flex_slots
-```
-
-After removing mandatory RB and WR starters, use the next `D_FLEX` RBs and next
-`D_FLEX` WRs as the realistic market pools competing for FLEX demand.
-
-For each FLEX depth `k = 1..D_FLEX`, pair the next RB and WR at the same depth and
-compute proportional shares:
+After mandatory RB/WR starters are removed, let the next RB and WR at FLEX depth
+`k` have values `V_RB,k` and `V_WR,k`. Their proportional shares are:
 
 \[
 p_{RB,k} = \frac{V_{RB,k}}{V_{RB,k} + V_{WR,k}}
@@ -219,7 +100,7 @@ p_{RB,k} = \frac{V_{RB,k}}{V_{RB,k} + V_{WR,k}}
 p_{WR,k} = 1 - p_{RB,k}
 \]
 
-Their credited FLEX values are:
+Credited FLEX values are:
 
 \[
 C_{RB,k} = p_{RB,k}V_{RB,k}
@@ -229,29 +110,13 @@ C_{RB,k} = p_{RB,k}V_{RB,k}
 C_{WR,k} = p_{WR,k}V_{WR,k}
 \]
 
-If only one eligible player exists at a particular depth, that player receives
-share `1.0` for that competition.
+If only one eligible player exists at a depth, that side receives the full FLEX
+credit for that competition.
 
-Then:
+For `D_FLEX = N * flex_slots`, sum each depth to obtain `M_RB,flex` and
+`M_WR,flex`.
 
-\[
-M_{RB,flex} = \sum_k C_{RB,k}
-\]
-
-\[
-M_{WR,flex} = \sum_k C_{WR,k}
-\]
-
-QB and TE receive no FLEX contribution in this version.
-
-This proportional method is intentionally a smooth approximation. It does not
-claim the two paired players literally split one real weekly start by those
-percentages; it avoids an unstable winner-take-all boundary while remaining
-fully determined by the same market-value curve.
-
-## 4. League-wide market totals
-
-Define each position's useful league-wide starting value:
+The useful league-wide positional totals are then:
 
 \[
 M_{QB} = M_{QB,mandatory}
@@ -269,11 +134,13 @@ M_{WR} = M_{WR,mandatory} + M_{WR,flex}
 M_{TE} = M_{TE,mandatory}
 \]
 
-Total useful league-wide starting value is:
+and:
 
 \[
 M_{total} = \sum_P M_P
 \]
+
+## 4. Neutral and adjusted positional targets
 
 Neutral target share is:
 
@@ -281,47 +148,31 @@ Neutral target share is:
 \boxed{T_P = \frac{M_P}{M_{total}}}
 \]
 
-Therefore:
+so:
 
 \[
 \sum_P T_P = 1
 \]
 
-Interpretation: if `T_RB = 0.37`, the neutral model says about 37% of the useful
-starting-lineup market value implied by this league and consensus market belongs
-to RB.
-
-## 5. Strategic target adjustment with `beta`
-
-The neutral market-derived target can be intentionally tilted by position.
-
-For each position, apply preference multiplier `beta_P` and renormalize:
+Strategic preference multipliers `beta_P` tilt the target, not the player:
 
 \[
-\boxed{
-T'_P = \frac{T_P\beta_P}{\sum_j T_j\beta_j}
-}
+\boxed{T'_P = \frac{T_P\beta_P}{\sum_j T_j\beta_j}}
 \]
 
-The adjusted targets still sum to `1.0`.
+and again:
 
-Example: raising `beta_RB` from `1.00` to `1.10` means the user wants the model
-to target somewhat more RB strength than the market-neutral allocation. It does
-**not** make individual RBs intrinsically more valuable; it changes the desired
-finished-roster allocation.
+\[
+\sum_P T'_P = 1
+\]
 
-## 6. Absolute finished-roster target `G_P`
-
-Comparing each position only with the user's currently drafted value is unstable
-early in the draft. A first-round RB would otherwise represent 100% of the
-current roster and produce a misleadingly huge relative share.
-
-Instead, derive a fixed finished-lineup target.
+Increasing `beta_RB`, for example, means the desired finished roster allocates
+more of its target value to RB. It does **not** increase any RB's `V_i`.
 
 Average useful starting value per fantasy team is:
 
 \[
-\boxed{G_{total} = \frac{M_{total}}{N}}
+G_{total} = \frac{M_{total}}{N}
 \]
 
 The absolute target for position `P` is:
@@ -330,71 +181,72 @@ The absolute target for position `P` is:
 \boxed{G_P = T'_P G_{total}}
 \]
 
-`G_P` is the market-value finish line for strength `1.00` at that position.
-It remains fixed during the draft unless one of its real inputs changes, such
-as league settings, consensus ADP, `alpha`, or a `beta` parameter.
+`G_P` is the denominator corresponding to strength `1.00` at that position.
+For a fixed league, ADP file, and repository parameter set, it is unchanged by
+which players the user has drafted.
 
-## 7. Actual roster contribution `R_P`
+## 5. Current roster contribution
 
-For the user's roster, first assign full market value to mandatory positional
-starters. At each position, the highest-value rostered players fill required
-starter slots first.
+The user's roster is re-optimized by market value rather than draft round.
+Players without usable Consensus ADP contribute no value to this metric and are
+reported as unavailable rather than substituted from another scale.
 
-After mandatory RB and WR slots are filled, remaining RBs and WRs compete for
-the user's FLEX slots using the same proportional pairing method described
-above.
+### 5.1 Mandatory starters
 
-For each user FLEX slot `k`, pair the next excess RB and WR:
+At each position, the highest-value rostered players fill required starter slots
+first and receive full `V_i` credit.
+
+### 5.2 User FLEX
+
+After mandatory RB and WR slots are filled, excess RBs and WRs compete for the
+user's FLEX slots using the same proportional pairing method as the league-wide
+target.
+
+For each FLEX depth `k`:
 
 \[
-p_{RB,k} = \frac{V_{RB,k}}{V_{RB,k} + V_{WR,k}}
+C_{RB,k} = \frac{V_{RB,k}}{V_{RB,k} + V_{WR,k}}V_{RB,k}
 \]
 
 \[
-p_{WR,k} = 1 - p_{RB,k}
+C_{WR,k} = \frac{V_{WR,k}}{V_{RB,k} + V_{WR,k}}V_{WR,k}
 \]
 
-and credit:
+If only one side exists, it receives full credit for that FLEX depth.
+
+### 5.3 Bench-depth credit
+
+Players beyond mandatory starter and FLEX capacity still provide roster depth.
+Current implementation gives diminishing positive credit instead of zero:
 
 \[
-C_{RB,k} = p_{RB,k}V_{RB,k}
+\boxed{C_{bench}(d) = \frac{V_i}{d+1}}
 \]
 
-\[
-C_{WR,k} = p_{WR,k}V_{WR,k}
-\]
+where `d` is one-based bench depth within that position after starter/FLEX
+assignment.
 
-If one side has no candidate, the available player receives the full FLEX share
-for that slot.
+Therefore:
 
-Then:
+- first bench-depth player: `V_i / 2`;
+- second: `V_i / 3`;
+- third: `V_i / 4`;
+- and so on.
 
-\[
-R_P = \text{mandatory starter value at P} + \text{credited FLEX value at P}
-\]
+For QB/TE, bench depth begins immediately after mandatory starters. For RB/WR,
+it begins after mandatory starters and allocated FLEX depth.
 
-for RB/WR, and simply mandatory starter value for QB/TE.
+This is a **depth value proxy**, not a ceiling/breakout model. A low-floor,
+high-upside handcuff and a safe veteran with the same Consensus ADP receive the
+same value here. Dart Throw mode and future upside signals are separate product
+concepts rather than hidden adjustments to this formula.
 
-### Bench players
+Let `R_P` be the sum of starter, FLEX, and bench-depth credit assigned to
+position `P`.
 
-Players beyond mandatory starter and FLEX capacity contribute:
+## 6. Positional strength
 
-\[
-\boxed{C_{bench}=0}
-\]
-
-to this metric.
-
-This is deliberate. Positional Strength measures useful starting-lineup
-strength, not bench option value. Bench drafting should eventually emphasize
-ceiling: for example, a player with a modest probability of becoming a strong
-starter may be preferable to a guaranteed low-ceiling scorer. That belongs in a
-separate future upside/ceiling signal rather than being approximated with a
-constant bench lambda.
-
-## 8. Positional Strength `S_P`
-
-The displayed positional strength is:
+Displayed strength is:
 
 \[
 \boxed{S_P = \frac{R_P}{G_P}}
@@ -402,165 +254,148 @@ The displayed positional strength is:
 
 Interpretation:
 
-- `S_P = 0.00`: no useful starting value acquired at the position.
-- `S_P = 0.70`: about 70% of the model's finished positional target acquired.
-- `S_P = 1.00`: target positional strength reached.
-- `S_P > 1.00`: the roster exceeds the target; do not cap the value.
+- `S_P = 0.00` — no credited value acquired at the position;
+- `S_P = 0.70` — about 70% of the model's target acquired;
+- `S_P = 1.00` — target reached;
+- `S_P > 1.00` — roster value including depth exceeds the target.
 
-The metric is intentionally an index. `1.20` does not mean 20% more fantasy
-points. It means useful market value credited to that position is 20% above the
-model's target value for the position.
+Do not interpret `1.20` as 20% more fantasy points. It means credited market
+value at the position is 20% above the model denominator.
 
-## 9. Candidate hypothetical strength
+Checkpoint `still_needed` remains a separate count-based rule. Reaching `1.00`
+does not silently satisfy or rewrite a checkpoint minimum.
 
-For every displayed draft candidate `i`, simulate adding that player to the
-current roster and recompute the relevant starter/FLEX assignment from scratch.
+## 7. Candidate hypothetical strength
 
-Let:
-
-\[
-S_P(R)
-\]
-
-be current positional strength and:
+For displayed candidate `i` at position `P`, simulate adding the candidate to
+the roster, re-optimize starter/FLEX/bench assignments, and calculate:
 
 \[
 S_P(R+i)
 \]
 
-be positional strength after hypothetically drafting candidate `i`.
-
 Candidate impact is:
 
 \[
-\boxed{\Delta S_i = S_P(R+i)-S_P(R)}
+\boxed{\Delta S_i = S_P(R+i) - S_P(R)}
 \]
 
-The player card must display the **ending value first**, because it is directly
-comparable with the existing roster header:
+The card displays ending strength first because it is directly comparable with
+the header:
 
 ```text
-RB Strength if drafted 0.94 (+0.26)
+RB S 0.94 (+0.26)
 ```
 
-A candidate who would only become bench depth may show:
+A bench-only candidate generally has a **positive but diminished** delta under
+the current depth model. The exact amount depends on market value and where the
+candidate lands in the re-optimized depth order.
 
-```text
-RB Strength if drafted 1.08 (+0.00)
-```
+### Performance requirement
 
-That does not mean the player has no draft value; it means Positional Strength
-is not the reason to select that player.
+The normal board shows every active available tracked player, so candidate
+strength may be calculated hundreds of times per poll. The league-wide target
+`G_P` is unchanged by a hypothetical roster addition. Candidate evaluation must
+therefore reuse the already-computed target and recompute only the hypothetical
+roster contribution instead of rebuilding all league market targets for every
+candidate.
 
-## 10. UI requirements for stress testing
+This optimization must not change the resulting strength value.
 
-The Test UI should make the model inspectable rather than hiding calibration
-behind code changes.
+## 8. Repository parameters and inspectability
 
-It should expose editable values for:
+`alpha` and all `beta_*` values are repository-backed personal configuration.
+They are intentionally **not editable from the live UI** and `/board` does not
+accept them as behavior-changing query overrides.
 
-- `alpha`
-- `beta_QB`
-- `beta_RB`
-- `beta_WR`
-- `beta_TE`
+Changing calibration now requires editing
+`resources/general-preferences.csv`, running tests, and promoting the repository
+change through the normal dev → feature → main flow. This trades rapid slider
+experimentation for reproducibility across Test, Production, browsers, and
+container recreations.
 
-Each control should show its current value and a short plain-English purpose.
-Changing a value should cause all derived quantities to be recalculated:
+The board remains inspectable by showing:
 
-- player market values
-- league-wide FLEX allocation
-- `T_P`
-- adjusted `T'_P`
-- `G_total`
-- `G_P`
-- current `S_P`
-- every displayed candidate's hypothetical `S_P(R+i)` and delta
+- current position strength;
+- each rostered player's Consensus ADP and credited value where available;
+- each candidate's ending strength and delta;
+- the server payload's target/model metadata.
 
-The UI should also make the current neutral and adjusted targets inspectable
-while testing, even if they later become secondary or debugging information.
+## 9. Relationship to Dart Throw mode
 
-Parameter adjustment is specifically a calibration/testing affordance. The
-final product may choose less prominent controls after stress testing, but the
-model must not hide tunable constants during calibration.
+Dart Throw mode consumes positional strength only as a gate. It becomes eligible
+when:
 
-## 11. Invariants and sanity checks
+\[
+S_{QB} \ge 1.00,\quad
+S_{RB} \ge 1.00,\quad
+S_{WR} \ge 1.00,\quad
+S_{TE} \ge 1.00
+\]
+
+This threshold does not change `V_i`, `T_P`, `G_P`, `R_P`, or any candidate
+strength calculation. It simply marks the roster as sufficiently built across
+all four tracked positions to expose the separately configured late-round Dart
+Throw view.
+
+See [`dart-throw-mode.md`](dart-throw-mode.md).
+
+## 10. Invariants and sanity checks
 
 The implementation should preserve these invariants:
 
-1. Earlier consensus ADP must never produce lower `V_i` than later consensus ADP
-   for positive `alpha`.
+1. Earlier positive Consensus ADP never produces lower `V_i` than later ADP for
+   positive `alpha`.
 2. `T_QB + T_RB + T_WR + T_TE = 1` within floating-point tolerance.
 3. `T'_QB + T'_RB + T'_WR + T'_TE = 1` within floating-point tolerance.
 4. Every FLEX pair's RB/WR shares sum to `1` when at least one eligible player
    exists.
-5. Adding a player cannot reduce the positional strength of that player's
-   position when the roster is re-optimized under the same parameters.
-6. Bench-only candidates add `0` to Positional Strength.
+5. Adding a usable player cannot reduce that player's positional strength after
+   roster re-optimization under unchanged parameters.
+6. Bench-depth credit is positive and diminishing; identical-value players get
+   no more credit at a deeper depth than at a shallower one.
 7. Strength values are not capped at `1.00`.
 8. Candidate ending strength equals the value obtained by actually adding that
-   player to the same roster state and recalculating.
-9. Sleeper ADP may order the board, but only consensus ADP may feed `V_i`.
+   player to the same roster and recalculating with the same fixed target.
+9. Board rank may use canonical ADP or explicit fallbacks, but only Consensus ADP
+   may feed `V_i`.
 10. A player's live-draft fall does not increase `V_i`; draft surplus is a
-    separate signal.
+    separate concept.
+11. The `1.00` Dart Throw threshold reads the resulting strength values and does
+    not feed back into their calculation.
 
-## 12. Mock-draft stress-testing plan
+## 11. Validation scenarios
 
-The purpose of stress testing is not to prove that a particular mock draft was
-"good." It is to identify places where the formula produces recommendations or
-strength numbers that conflict with the intended meaning of the metric.
+Tests and real mock-draft sessions should cover:
 
-Useful roster constructions to test include:
+- early RB-heavy and WR-heavy builds;
+- zero/late-RB starts;
+- early elite QB or TE;
+- intentionally delayed QB/TE;
+- different league starter/FLEX structures;
+- players falling materially below Consensus ADP;
+- starter candidates, FLEX candidates, and multiple depths of bench candidates;
+- positions below, exactly at, and above `1.00`;
+- the transition where the fourth position crosses `1.00` and Dart Throw mode
+  becomes available;
+- a full uncapped player board to ensure candidate-strength calculation remains
+  responsive and numerically equivalent to direct recalculation.
 
-- early RB-heavy starts
-- zero/late-RB starts
-- early WR-heavy starts
-- an early elite QB
-- an early elite TE
-- QB and TE intentionally delayed
-- 2-WR / 1-FLEX leagues
-- 3-WR / 2-FLEX leagues
-- candidates who fall materially below consensus ADP
-- positions that have reached or exceeded `1.00`
-- late rounds where most displayed candidates are bench-only for starting
-  strength
+When a result looks wrong, record league settings, repository parameters, roster,
+position targets, current strength, and candidate hypothetical strength. Fix a
+structural assumption or explicit parameter rather than adding an unexplained
+special-case threshold.
 
-For each surprising result, record the roster, league settings, parameter
-values, current positional strengths, candidate hypothetical strengths, and the
-specific behavior that looked wrong. Change one parameter at a time where
-possible.
+## 12. Explicitly deferred extensions
 
-### What to look for
+The following are outside this model:
 
-Stress testing should focus especially on:
-
-- whether `alpha = 0.50` makes early players too dominant or not dominant enough;
-- whether the market-derived `T_P` values feel sensible as roster requirements
-  change;
-- whether `beta` adjustments produce smooth, understandable strategic tilts;
-- whether FLEX pairing gives stable results without over-crediting depth;
-- whether `1.00` feels like a useful point at which starting positional need is
-  substantially satisfied;
-- whether a candidate's displayed ending strength is intuitive when compared
-  directly with current position headers;
-- whether bench-only `+0.00` results appear at a sensible point in the draft.
-
-Calibration should prefer changing the explicit parameters or correcting a
-structural assumption over adding special-case thresholds.
-
-## 13. Future extensions explicitly deferred
-
-The following may eventually improve the model but should not be smuggled into
-this version during calibration:
-
-- replacement-level or WAR valuation
-- historical outcome distributions
-- ceiling / breakout probability for bench players
-- weekly projections or matchup-specific FLEX probability
-- TE participation in FLEX
-- probabilistic player availability
-- draft-surplus / steal scoring
-- unified recommendation scoring
-
-Those can be layered on after this starting-strength model is understandable and
-stable under real mock-draft stress testing.
+- WAR/replacement-level valuation;
+- historical outcome distributions;
+- explicit breakout/ceiling probability;
+- weekly projections or matchup-specific FLEX probability;
+- TE participation in FLEX;
+- probabilistic player availability;
+- draft-surplus/steal scoring;
+- unified recommendation scoring;
+- treating user-written Dart Throw rationale as numeric strength input.
