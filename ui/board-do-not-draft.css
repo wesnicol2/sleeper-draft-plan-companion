@@ -20,16 +20,10 @@
   right: 0.35rem;
   top: 0.2rem;
   z-index: 3;
-  padding: 0;
-  border: 0;
-  background: transparent;
   color: #ffb3b3;
   font: inherit;
   font-size: 1.05rem;
   line-height: 1;
-  cursor: pointer;
 }
 
 .granked:has(.player-do-not-draft) { padding-right: 1.75rem; }
-.player-do-not-draft:hover { transform: scale(1.12); }
-.player-do-not-draft:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; border-radius: 2px; }
