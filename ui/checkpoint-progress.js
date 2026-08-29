@@ -40,13 +40,9 @@
   }
 
   function progressText(progress) {
-    if (progress.freePicks == null) return plural(progress.roundsLeft, 'round') + ' left';
-    return (
-      plural(progress.freePicks, 'free pick') +
-      ' left · ' +
-      plural(progress.roundsLeft, 'round') +
-      ' left'
-    );
+    const rounds = plural(progress.roundsLeft, 'round') + ' left';
+    if (progress.freePicks == null) return rounds;
+    return rounds + ', ' + plural(progress.freePicks, 'free pick') + ' left';
   }
 
   function progressClass(progress) {
@@ -55,16 +51,15 @@
     return '';
   }
 
-  function moveRowsDown(grid, fromRow, exceptCell) {
+  function moveRowsDown(grid, fromRow) {
     Array.from(grid.children).forEach((cell) => {
-      if (cell === exceptCell) return;
       const start = Number(cell.style.gridRowStart);
       if (!Number.isFinite(start) || start < fromRow) return;
       cell.style.gridRowStart = String(start + 1);
     });
   }
 
-  function addNeedsProgress(board) {
+  function addBoardProgressBand(board) {
     const progress = checkpointProgress(board);
     if (!progress) return;
 
@@ -78,23 +73,19 @@
     const needStart = Number(needsGutter.style.gridRowStart);
     if (!Number.isFinite(needStart)) return;
 
-    moveRowsDown(grid, needStart, needsGutter);
-
-    const spanMatch = /^span\s+(\d+)$/.exec(needsGutter.style.gridRowEnd || '');
-    const existingSpan = spanMatch ? Number(spanMatch[1]) : 1;
-    needsGutter.style.gridRowEnd = 'span ' + (existingSpan + 1);
+    moveRowsDown(grid, needStart);
 
     const summary = document.createElement('div');
     summary.className = 'gcell checkpoint-progress-summary' + progressClass(progress);
     summary.style.gridRow = String(needStart);
-    summary.style.gridColumn = '2 / -1';
+    summary.style.gridColumn = '1 / -1';
     summary.textContent = progressText(progress);
     grid.appendChild(summary);
   }
 
   renderBoard = function (board) {
     originalRenderBoard(board);
-    addNeedsProgress(board);
+    addBoardProgressBand(board);
   };
 
   window.checkpointProgress = checkpointProgress;

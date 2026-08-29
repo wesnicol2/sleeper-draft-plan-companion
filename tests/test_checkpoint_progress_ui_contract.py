@@ -24,17 +24,24 @@ def test_checkpoint_progress_uses_remaining_user_turns_and_needs():
     assert "round" in js
 
 
-def test_checkpoint_progress_is_rendered_inside_board_needs_band():
+def test_checkpoint_progress_is_rendered_between_strength_and_needs():
     js = (ROOT / "ui" / "checkpoint-progress.js").read_text()
     css = (ROOT / "ui" / "checkpoint-progress.css").read_text()
 
     assert "const originalRenderBoard = renderBoard" in js
-    assert "originalRenderCheckpoint" not in js
     assert "cell.textContent.trim() === 'NEEDS'" in js
-    assert "moveRowsDown(grid, needStart, needsGutter)" in js
-    assert "summary.style.gridColumn = '2 / -1'" in js
+    assert "moveRowsDown(grid, needStart)" in js
+    assert "summary.style.gridRow = String(needStart)" in js
+    assert "summary.style.gridColumn = '1 / -1'" in js
     assert "checkpoint-progress-summary" in js
+    assert "boardMeta" not in js
     assert ".checkpoint-progress-summary" in css
+
+
+def test_checkpoint_progress_text_shows_rounds_then_free_picks():
+    js = (ROOT / "ui" / "checkpoint-progress.js").read_text()
+
+    assert "return rounds + ', ' + plural(progress.freePicks, 'free pick') + ' left';" in js
 
 
 def test_checkpoint_progress_distinguishes_free_and_constrained_choices():
