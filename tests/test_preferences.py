@@ -14,9 +14,8 @@ def test_repository_preference_files_are_structurally_valid():
     for record in player_preferences.values():
         assert isinstance(record["starred"], bool)
         assert isinstance(record["do_not_draft"], bool)
-    assert {"alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"} <= set(
-        general_preferences
-    )
+    required_model_preferences = {"alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"}
+    assert required_model_preferences.issubset(general_preferences)
 
 
 def test_player_preferences_parse_flags_without_strategy_assumptions(tmp_path: Path):
