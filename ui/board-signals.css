@@ -1,0 +1,45 @@
+.granked.context-signal-card {
+  background: var(--signal-bg, var(--bg)) !important;
+  transition: background-color 120ms ease;
+}
+
+.granked.context-signal-card .pname {
+  color: var(--text);
+}
+
+.context-signal-strip {
+  display: flex;
+  gap: 0.18rem;
+  align-items: center;
+  min-width: 0;
+  margin-top: 0.12rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.context-signal {
+  display: inline-block;
+  flex: 0 0 auto;
+  padding: 0.04rem 0.22rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.52rem;
+  font-weight: 800;
+  letter-spacing: 0.025em;
+  line-height: 1.2;
+}
+
+.context-signal-positive {
+  color: #c8f7d3;
+  background: rgba(27, 94, 48, 0.42);
+}
+
+.context-signal-negative {
+  color: #ffd1d1;
+  background: rgba(115, 31, 31, 0.42);
+}
+
+@media (max-width: 560px) {
+  .context-signal-strip { gap: 0.12rem; }
+  .context-signal { font-size: 0.48rem; padding-inline: 0.16rem; }
+}
