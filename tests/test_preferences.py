@@ -14,11 +14,17 @@ def test_repository_preference_files_are_structurally_valid():
     for record in player_preferences.values():
         assert isinstance(record["starred"], bool)
         assert isinstance(record["do_not_draft"], bool)
-    required_model_preferences = {"alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"}
+    required_model_preferences = {
+        "alpha",
+        "beta_QB",
+        "beta_RB",
+        "beta_WR",
+        "beta_TE",
+    }
     assert required_model_preferences.issubset(general_preferences)
 
 
-def test_player_preferences_parse_flags_without_strategy_assumptions(tmp_path: Path):
+def test_player_flags_parse_without_strategy_assumptions(tmp_path: Path):
     csv_path = tmp_path / "player-preferences.csv"
     csv_path.write_text(
         "id,Position,Player,Team,starred,do_not_draft\n"
@@ -38,7 +44,7 @@ def test_player_preferences_parse_flags_without_strategy_assumptions(tmp_path: P
     assert records[30]["do_not_draft"] is False
 
 
-def test_player_preference_cannot_be_both_starred_and_do_not_draft(tmp_path: Path):
+def test_star_and_do_not_draft_are_mutually_exclusive(tmp_path: Path):
     csv_path = tmp_path / "player-preferences.csv"
     csv_path.write_text(
         "id,Position,Player,Team,starred,do_not_draft\n"
@@ -50,7 +56,7 @@ def test_player_preference_cannot_be_both_starred_and_do_not_draft(tmp_path: Pat
         preferences.load_player_preferences(csv_path)
 
 
-def test_general_preferences_parse_positive_numeric_values(tmp_path: Path):
+def test_general_preferences_parse_positive_values(tmp_path: Path):
     csv_path = tmp_path / "general-preferences.csv"
     csv_path.write_text(
         "id,preference_name,preference_value\n"
@@ -65,8 +71,12 @@ def test_general_preferences_parse_positive_numeric_values(tmp_path: Path):
     }
 
 
-def test_apply_player_preferences_decorates_only_canonical_adp_rows(monkeypatch):
-    monkeypatch.setattr(preferences, "_validate_player_preferences", lambda _records: None)
+def test_apply_preferences_only_to_canonical_adp_rows(monkeypatch):
+    monkeypatch.setattr(
+        preferences,
+        "_validate_player_preferences",
+        lambda _records: None,
+    )
     records = {
         10: {
             "position": "RB",
