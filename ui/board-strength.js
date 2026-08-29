@@ -84,7 +84,7 @@
       const label = document.createElement('span');
       label.className = 'board-strength-total';
       label.textContent = 'Strength ' + fmt(s.strength) + (s.still_needed ? ' · need ' + s.still_needed : '');
-      label.title = 'Credited starter/FLEX market value divided by the adjusted finished-roster target.';
+      label.title = 'Credited starter, FLEX, and diminishing bench-depth market value divided by the adjusted finished-roster target.';
       header.appendChild(label);
 
       const column = String(index + 2);
@@ -98,8 +98,6 @@
         detail.className = 'board-strength-contribution';
         if (player.consensus_adp == null) {
           detail.textContent = 'V unavailable';
-        } else if (player.strength_contribution === 0) {
-          detail.textContent = 'ADP ' + Number(player.consensus_adp).toFixed(1) + ' · bench credit 0';
         } else {
           detail.textContent = 'ADP ' + Number(player.consensus_adp).toFixed(1) +
             ' · credited V ' + Number(player.strength_contribution || 0).toFixed(3);

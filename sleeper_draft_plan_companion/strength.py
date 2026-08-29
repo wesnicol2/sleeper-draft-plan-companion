@@ -61,6 +61,12 @@ def market_value(consensus_adp: Any, alpha: float) -> float | None:
     return adp ** (-alpha)
 
 
+def bench_depth_weight(depth: int) -> float:
+    """Diminishing bench credit: first bench player gets 1/2, then 1/3, 1/4, ..."""
+    depth = max(1, int(depth or 1))
+    return 1.0 / (depth + 1)
+
+
 def _values_by_position(
     consensus_by_player: dict[str, float],
     positions_by_player: dict[str, str],
@@ -164,7 +170,7 @@ def roster_contributions(
     consensus_by_player: dict[str, float],
     alpha: float,
 ) -> tuple[dict[str, float], dict[str, float | None]]:
-    """Credit mandatory starters plus proportional RB/WR FLEX; bench gets zero."""
+    """Credit starters, proportional RB/WR FLEX, and diminishing bench depth."""
     position_values: dict[str, list[tuple[dict[str, Any], float]]] = {
         position: [] for position in TRACKED_POSITIONS
     }
@@ -186,6 +192,7 @@ def roster_contributions(
 
     for position in TRACKED_POSITIONS:
         required = max(0, int(starters.get(position, 0) or 0))
+        bench_depth = 0
         for index, (player, value) in enumerate(position_values[position]):
             player_id = str(player.get("player_id") or "")
             if index < required:
@@ -194,8 +201,12 @@ def roster_contributions(
                     player_credit[player_id] = value
             elif position in FLEX_POSITIONS:
                 excess[position].append((player, value))
-            elif player_id:
-                player_credit[player_id] = 0.0
+            else:
+                bench_depth += 1
+                credit = bench_depth_weight(bench_depth) * value
+                contributions[position] += credit
+                if player_id:
+                    player_credit[player_id] = credit
 
     flex_slots = max(0, int(starters.get("FLEX", 0) or 0))
     for index in range(flex_slots):
@@ -224,8 +235,10 @@ def roster_contributions(
         player_credit[str(wr_player.get("player_id") or "")] = wr_credit
 
     for position in FLEX_POSITIONS:
-        for player, _value in excess[position][flex_slots:]:
-            player_credit[str(player.get("player_id") or "")] = 0.0
+        for bench_depth, (player, value) in enumerate(excess[position][flex_slots:], start=1):
+            credit = bench_depth_weight(bench_depth) * value
+            contributions[position] += credit
+            player_credit[str(player.get("player_id") or "")] = credit
 
     return contributions, player_credit
 
