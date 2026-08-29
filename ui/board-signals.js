@@ -34,31 +34,14 @@
     return { polarity, key, label, detail };
   }
 
-  function uniqueWeakestPosition(board) {
-    const strength = board && board.positional_strength || {};
-    const values = ['QB', 'RB', 'WR', 'TE']
-      .map((position) => [position, Number((strength[position] || {}).strength)])
-      .filter(([, value]) => Number.isFinite(value));
-    if (!values.length) return null;
-    const minimum = Math.min(...values.map(([, value]) => value));
-    const weakest = values.filter(([, value]) => Math.abs(value - minimum) < 1e-9);
-    return weakest.length === 1 ? weakest[0][0] : null;
-  }
-
   function playerSignals(player, board) {
     const roster = board && board.my_roster || {};
     const checkpoint = board && board.checkpoint || {};
     const allRostered = rosterPlayers(roster);
     const signals = [];
 
-    if ((checkpoint.still_needed || {})[player.position]) {
-      signals.push(signal('positive', 'need', 'NEED', 'Fills an outstanding checkpoint need at ' + player.position));
-    }
     if (checkpoint.lean && checkpoint.lean === player.position) {
       signals.push(signal('positive', 'lean', 'LEAN', 'Matches the checkpoint lean toward ' + player.position));
-    }
-    if (uniqueWeakestPosition(board) === player.position) {
-      signals.push(signal('positive', 'weak', 'WEAK', player.position + ' is currently the uniquely weakest position by weighted strength'));
     }
     if (TOP_5_OFFENSE_TEAMS.has(player.team)) {
       signals.push(signal('positive', 'top-offense', 'TOP 5 OFF', player.team + ' is in the configured top-five offense tier'));

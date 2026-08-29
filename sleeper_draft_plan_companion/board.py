@@ -2,38 +2,35 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from . import adp, bye, decision, draft, sleeper, strength
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
 TIE_BREAK_ORDER = ("RB", "WR", "TE", "QB")
 BOARD_ROWS = 32
-CRITERIA = (
-    "fills a position the checkpoint is still short of",
-    "matches the checkpoint's lean",
-)
+CRITERIA = ("matches the checkpoint's lean",)
 
 
 def order_columns(counts, needs, strengths=None):
+    del counts
     strengths = strengths or {}
 
     def sort_key(position):
-        shortfall = needs.get(position, 0)
+        shortfall = max(0, needs.get(position, 0))
+        position_strength = strengths.get(position)
+        if position_strength is None:
+            position_strength = float("inf")
         return (
-            0 if shortfall > 0 else 1,
-            -shortfall if shortfall > 0 else 0,
-            strengths.get(position, 0.0),
-            counts.get(position, 0),
+            -shortfall,
+            position_strength,
             TIE_BREAK_ORDER.index(position),
         )
 
     return sorted(TRACKED_POSITIONS, key=sort_key)
 
 
-def criteria_count(position: str, still_needed: dict[str, Any], lean: str | None) -> int:
-    return int(bool(still_needed.get(position))) + int(position == lean)
+def criteria_count(position: str, lean: str | None) -> int:
+    return int(position == lean)
 
 
 def ranked_pool(players, taken_ids, limit, adp_index=None, season=None):
@@ -269,7 +266,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     }
     starters = state["strength_model"]["starters"]
     for entry in ranked:
-        entry["criteria"] = criteria_count(entry["position"], needs, lean)
+        entry["criteria"] = criteria_count(entry["position"], lean)
         entry["adp"] = rank_index.get(entry["player_id"])
         entry["consensus_adp"] = consensus_index.get(entry["player_id"])
         entry["strength_if_drafted"] = strength.candidate_strength(
