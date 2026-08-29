@@ -168,8 +168,7 @@ def test_dart_throws_match_name_position_and_preserve_static_order(monkeypatch):
             },
         ],
         "positional_strength": {
-            position: {"strength": 1.0}
-            for position in preferences.TRACKED_POSITIONS
+            position: {"strength": 1.0} for position in preferences.TRACKED_POSITIONS
         },
     }
     dart_throws = [
