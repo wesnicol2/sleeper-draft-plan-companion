@@ -1,6 +1,8 @@
 (() => {
   const originalRenderBoard = renderBoard;
   const SATURATION_SIGNALS = 3;
+  const TOP_5_OFFENSE_TEAMS = new Set(['LAR', 'BUF', 'DET', 'CIN', 'BAL']);
+  const BOTTOM_5_OFFENSE_TEAMS = new Set(['LV', 'MIA', 'CLE', 'ARI', 'NYJ']);
   const COLORS = {
     neutral: [20, 22, 26],
     positive: [31, 122, 64],
@@ -55,6 +57,12 @@
     }
     if (uniqueWeakestPosition(board) === player.position) {
       signals.push(signal('positive', 'weak', 'WEAK', player.position + ' is currently the uniquely weakest position by weighted strength'));
+    }
+    if (TOP_5_OFFENSE_TEAMS.has(player.team)) {
+      signals.push(signal('positive', 'top-offense', 'TOP 5 OFF', player.team + ' is in the configured top-five offense tier'));
+    }
+    if (BOTTOM_5_OFFENSE_TEAMS.has(player.team)) {
+      signals.push(signal('negative', 'bottom-offense', 'BOTTOM 5 OFF', player.team + ' is in the configured bottom-five offense tier'));
     }
 
     const sameTeam = player.team
