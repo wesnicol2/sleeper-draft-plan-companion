@@ -11,6 +11,8 @@ import csv
 from pathlib import Path
 from typing import Any
 
+from . import adp
+
 RESOURCE_DIR = Path(__file__).resolve().parent.parent / "resources"
 PLAYER_PREFERENCES_PATH = RESOURCE_DIR / "player-preferences.csv"
 GENERAL_PREFERENCES_PATH = RESOURCE_DIR / "general-preferences.csv"
@@ -19,13 +21,9 @@ PLAYER_HEADER = ["id", "Position", "Player", "Team", "starred", "do_not_draft"]
 GENERAL_HEADER = ["id", "preference_name", "preference_value"]
 
 
-def _flag(value: str, *, field: str, row_id: int) -> bool:
-    normalized = value.strip().lower()
-    if normalized in {"1", "true", "yes"}:
-        return True
-    if normalized in {"0", "false", "no", ""}:
-        return False
-    raise ValueError(f"Invalid {field} value for preference id {row_id}: {value!r}")
+def _flag(value: str) -> bool:
+    """Only explicit opt-in values are true; malformed/blank values fail safe false."""
+    return value.strip().lower() in {"1", "true", "yes"}
 
 
 def load_player_preferences(
@@ -45,10 +43,8 @@ def load_player_preferences(
                 raise ValueError(f"Invalid player preference id: {row.get('id')!r}") from exc
             if rank in records:
                 raise ValueError(f"Duplicate player preference id: {rank}")
-            starred = _flag(row.get("starred") or "", field="starred", row_id=rank)
-            do_not_draft = _flag(
-                row.get("do_not_draft") or "", field="do_not_draft", row_id=rank
-            )
+            starred = _flag(row.get("starred") or "")
+            do_not_draft = _flag(row.get("do_not_draft") or "")
             if starred and do_not_draft:
                 raise ValueError(
                     f"Player preference id {rank} cannot be both starred and do_not_draft"
@@ -61,6 +57,41 @@ def load_player_preferences(
                 "do_not_draft": do_not_draft,
             }
     return records
+
+
+def _validate_player_preferences(records: dict[int, dict[str, Any]]) -> None:
+    canonical = {record["rank"]: record for record in adp.load_adp()}
+    for rank, preference in records.items():
+        record = canonical.get(rank)
+        if record is None:
+            raise ValueError(f"Player preference id {rank} is not present in resources/adp.csv")
+        if (
+            preference["position"] != record["position"]
+            or preference["player"] != record["player_name"]
+        ):
+            raise ValueError(
+                "Player preference id "
+                f"{rank} does not match resources/adp.csv: "
+                f"{preference['position']} {preference['player']}"
+            )
+
+
+def apply_player_preferences(
+    payload: dict[str, Any], records: dict[int, dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Attach read-only preference flags to canonical-ADP ranked board entries."""
+    records = records or load_player_preferences()
+    _validate_player_preferences(records)
+    for entry in payload.get("ranked") or []:
+        rank = entry.get("rank_value") if entry.get("rank_source") == "adp" else None
+        preference = records.get(rank) if isinstance(rank, int) else None
+        entry["starred"] = bool(preference and preference["starred"])
+        entry["do_not_draft"] = bool(preference and preference["do_not_draft"])
+    payload["personal_preferences"] = {
+        "source": "resources/player-preferences.csv",
+        "mutable_in_ui": False,
+    }
+    return payload
 
 
 def load_general_preferences(path: Path | None = None) -> dict[str, float]:
