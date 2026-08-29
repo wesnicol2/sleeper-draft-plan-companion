@@ -1,8 +1,8 @@
 """The draft plan and its validation.
 
-This file is hand-edited on the server, so the interesting cases are the broken
-ones. A silently misread plan produces a board that is confidently wrong about
-what you still need, which is worse than an error because you would act on it.
+These tests cover plan mechanics, not the contents of the shipped strategy.
+Changing a valid draft_plan.json should not require changing tests. Strategy-
+specific values belong in explicit test fixtures when a behavior needs them.
 """
 
 import json
@@ -31,38 +31,53 @@ GOOD = {
 }
 
 
-def test_default_plan_matches_the_spec(data_dir):
+def test_packaged_default_plan_loads_as_valid_configuration(data_dir):
     p = plan.load_plan()
+
     assert p["using_override"] is False
-    rounds = [(c["first_round"], c["last_round"]) for c in p["checkpoints"]]
-    assert rounds == [(1, 3), (4, 6), (7, 10), (11, 14)]
-    assert [c["name"] for c in p["checkpoints"]] == [
-        "Early Draft",
-        "RB Deadzone",
-        "Flex Filler",
-        "WR Cliff",
-    ]
-    assert p["checkpoints"][0]["minimums"] == {"RB": 2, "WR": 1}
-    assert p["checkpoints"][1]["minimums"] == {"RB": 2, "WR": 3, "QB": 0, "TE": 0}
-    assert p["checkpoints"][2]["minimums"] == {"RB": 2, "WR": 4, "QB": 0, "TE": 0}
-    assert p["checkpoints"][-1]["minimums"] == {"RB": 4, "WR": 4, "QB": 1, "TE": 1}
+    assert p["source_file"] == str(plan.DEFAULT_PLAN_FILE)
+    assert p["checkpoints"]
+    assert plan.last_planned_round(p) == p["checkpoints"][-1]["last_round"]
 
 
-def test_plan_stops_at_round_14_because_defense_is_out_of_scope(data_dir):
+def test_checkpoint_lookup_and_last_round_follow_supplied_plan(data_dir):
+    write_override(data_dir, GOOD)
     p = plan.load_plan()
-    assert plan.last_planned_round(p) == 14
-    assert plan.checkpoint_for_round(p, 14) is not None
-    assert plan.checkpoint_for_round(p, 15) is None
+
+    assert plan.checkpoint_for_round(p, 1)["name"] == "early"
+    assert plan.checkpoint_for_round(p, 3)["name"] == "early"
+    assert plan.checkpoint_for_round(p, 4)["name"] == "late"
+    assert plan.checkpoint_for_round(p, 6)["name"] == "late"
+    assert plan.last_planned_round(p) == 6
+    assert plan.checkpoint_for_round(p, 7) is None
 
 
-def test_checkpoint_lookup_spans_its_rounds(data_dir):
+def test_alternate_valid_packaged_strategy_loads_without_special_cases(data_dir, tmp_path, monkeypatch):
+    alternate = tmp_path / "alternate-default.json"
+    alternate.write_text(
+        json.dumps(
+            {
+                "name": "Different strategy",
+                "checkpoints": [
+                    {
+                        "name": "only checkpoint",
+                        "first_round": 1,
+                        "last_round": 2,
+                        "minimums": {"QB": 1},
+                        "lean": "QB",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "DEFAULT_PLAN_FILE", alternate)
+
     p = plan.load_plan()
-    assert plan.checkpoint_for_round(p, 1)["name"] == "Early Draft"
-    assert plan.checkpoint_for_round(p, 3)["name"] == "Early Draft"
-    assert plan.checkpoint_for_round(p, 4)["name"] == "RB Deadzone"
-    assert plan.checkpoint_for_round(p, 7)["name"] == "Flex Filler"
-    assert plan.checkpoint_for_round(p, 10)["name"] == "Flex Filler"
-    assert plan.checkpoint_for_round(p, 11)["name"] == "WR Cliff"
+
+    assert p["using_override"] is False
+    assert p["name"] == "Different strategy"
+    assert p["checkpoints"][0]["minimums"] == {"QB": 1}
 
 
 def test_override_wins_over_the_packaged_default(data_dir):
@@ -79,12 +94,12 @@ def test_broken_override_falls_back_instead_of_taking_the_app_down(data_dir):
     p = plan.load_plan()
 
     assert p["using_override"] is False
-    assert p["name"] == "Default draft plan"
+    assert p["source_file"] == str(plan.DEFAULT_PLAN_FILE)
     assert "ignored" in p["override_error"]
 
 
 def test_gap_between_checkpoints_is_rejected(data_dir):
-    """Rounds 4-6 missing means round 5 silently has no rules."""
+    """Rounds missing between checkpoints must not silently have no rules."""
     write_override(
         data_dir,
         {
@@ -115,8 +130,7 @@ def test_overlapping_checkpoints_are_rejected(data_dir):
 
 
 def test_untracked_position_is_rejected(data_dir):
-    """DEF is deliberately out of scope; a minimum for it would never be met
-    and would leave the board permanently claiming an unfillable need."""
+    """A minimum for a position the board cannot represent would never be met."""
     write_override(
         data_dir,
         {
@@ -162,11 +176,7 @@ def test_reading_the_plan_creates_nothing(tmp_path, monkeypatch):
 
 
 def test_plan_loads_when_the_data_dir_cannot_be_created(tmp_path, monkeypatch):
-    """Regression: creating DATA_DIR as a side effect of *reading* the optional
-    override broke CI, where the runner cannot write /srv. Reproduced here by
-    making the parent a regular file, which defeats mkdir for any user --
-    running the suite as root would mask a permissions-based version of this.
-    """
+    """Reading the optional override must not try to create DATA_DIR."""
     blocker = tmp_path / "iam-a-file"
     blocker.write_text("not a directory", encoding="utf-8")
     monkeypatch.setenv("DATA_DIR", str(blocker / "data"))
@@ -174,4 +184,5 @@ def test_plan_loads_when_the_data_dir_cannot_be_created(tmp_path, monkeypatch):
     p = plan.load_plan()
 
     assert p["using_override"] is False
-    assert p["name"] == "Default draft plan"
+    assert p["source_file"] == str(plan.DEFAULT_PLAN_FILE)
+    assert p["checkpoints"]
