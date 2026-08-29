@@ -33,7 +33,8 @@
   function isNeutralTeamPair(candidate, rostered) {
     if (!candidate || !rostered || !candidate.team || candidate.team !== rostered.team) return false;
     const positions = new Set([candidate.position, rostered.position]);
-    return positions.size === 2 && positions.has('QB') && positions.has('RB');
+    if (positions.size !== 2 || !positions.has('RB')) return false;
+    return positions.has('QB') || positions.has('WR') || positions.has('TE');
   }
 
   function signal(polarity, key, label, detail, weight = 1) {
@@ -65,7 +66,7 @@
       signals.push(signal('positive', 'stack', 'STACK', 'Same-team QB + WR/TE stack with ' + names + ' (' + player.team + ')'));
     }
 
-    // QB + RB on the same team is deliberately neutral. Other non-stack team
+    // RB + QB/WR/TE on the same team is deliberately neutral. Other non-stack
     // overlap is negative, with same-position duplication weighted twice as
     // strongly as cross-position overlap (for example WR+WR > WR+TE).
     const nonStackTeam = sameTeam.filter(

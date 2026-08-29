@@ -34,12 +34,12 @@ REPOSITORY-BACKED PERSONAL PREFERENCES
 CONTEXTUAL PLAYER SIGNALS
 - Positive: checkpoint LEAN, QB + WR/TE passing STACK, configured TOP 5 OFF.
 - Negative: configured BOTTOM 5 OFF, same-position bye conflicts, and same-team
-  concentration outside a passing stack.
+  concentration outside a passing stack or RB cross-position neutral pair.
 - Same-team overlap is position-sensitive:
   - same position = TEAM×2, negative color weight 2;
-  - different position = TEAM, negative color weight 1;
+  - different position = TEAM, negative color weight 1, except RB + QB/WR/TE;
   - QB + WR/TE = positive STACK;
-  - QB + RB = neutral and does not count toward card color/team load.
+  - RB + QB/WR/TE = neutral and does not count toward card color/team load.
 - Signals are presentation-only. They should remain visible/explainable and not
   silently rewrite canonical rank.
 
@@ -77,8 +77,8 @@ VALIDATION PRIORITIES
   and delayed QB/TE builds.
 - Confirm the full uncapped board remains responsive while candidate strength is
   calculated for every available player.
-- Confirm same-position team overlap is visibly stronger than cross-position
-  overlap and QB/RB same-team pairs are neutral.
+- Confirm same-position team overlap is visibly stronger than eligible
+  cross-position overlap and all RB + QB/WR/TE same-team pairs are neutral.
 - Confirm repository Starred/Do Not Draft/model settings are identical in Test
   and Production after promotion and cannot be changed from the UI.
 - Confirm Dart Throw toggle appears exactly when the fourth tracked position
