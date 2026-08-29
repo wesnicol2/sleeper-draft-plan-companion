@@ -35,8 +35,17 @@ def test_default_plan_matches_the_spec(data_dir):
     p = plan.load_plan()
     assert p["using_override"] is False
     rounds = [(c["first_round"], c["last_round"]) for c in p["checkpoints"]]
-    assert rounds == [(1, 3), (4, 6), (7, 9), (10, 14)]
-    assert p["checkpoints"][-1]["minimums"] == {"RB": 4, "WR": 5, "QB": 1, "TE": 1}
+    assert rounds == [(1, 3), (4, 6), (7, 10), (11, 14)]
+    assert [c["name"] for c in p["checkpoints"]] == [
+        "Early Draft",
+        "RB Deadzone",
+        "Flex Filler",
+        "WR Cliff",
+    ]
+    assert p["checkpoints"][0]["minimums"] == {"RB": 2, "WR": 1}
+    assert p["checkpoints"][1]["minimums"] == {"RB": 2, "WR": 3, "QB": 0, "TE": 0}
+    assert p["checkpoints"][2]["minimums"] == {"RB": 2, "WR": 4, "QB": 0, "TE": 0}
+    assert p["checkpoints"][-1]["minimums"] == {"RB": 4, "WR": 4, "QB": 1, "TE": 1}
 
 
 def test_plan_stops_at_round_14_because_defense_is_out_of_scope(data_dir):
@@ -48,10 +57,12 @@ def test_plan_stops_at_round_14_because_defense_is_out_of_scope(data_dir):
 
 def test_checkpoint_lookup_spans_its_rounds(data_dir):
     p = plan.load_plan()
-    assert plan.checkpoint_for_round(p, 1)["name"] == "Rounds 1-3"
-    assert plan.checkpoint_for_round(p, 3)["name"] == "Rounds 1-3"
-    assert plan.checkpoint_for_round(p, 4)["name"] == "Rounds 4-6"
-    assert plan.checkpoint_for_round(p, 10)["name"] == "Rounds 10-14"
+    assert plan.checkpoint_for_round(p, 1)["name"] == "Early Draft"
+    assert plan.checkpoint_for_round(p, 3)["name"] == "Early Draft"
+    assert plan.checkpoint_for_round(p, 4)["name"] == "RB Deadzone"
+    assert plan.checkpoint_for_round(p, 7)["name"] == "Flex Filler"
+    assert plan.checkpoint_for_round(p, 10)["name"] == "Flex Filler"
+    assert plan.checkpoint_for_round(p, 11)["name"] == "WR Cliff"
 
 
 def test_override_wins_over_the_packaged_default(data_dir):
