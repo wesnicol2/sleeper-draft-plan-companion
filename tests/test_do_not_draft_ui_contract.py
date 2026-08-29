@@ -28,8 +28,18 @@ def test_do_not_draft_and_stars_are_mutually_exclusive():
     assert "draft-companion-player-starred" in stars_js
 
 
-def test_do_not_draft_styles_include_red_highlight_and_control():
+def test_do_not_draft_styles_fully_block_card_except_name_and_control():
     css = (ROOT / "ui" / "board-do-not-draft.css").read_text()
     assert ".granked.do-not-draft-player" in css
-    assert ".player-do-not-draft" in css
-    assert "#ff6b6b" in css
+    assert "background: #8f1d1d !important" in css
+    assert "> :not(.pname):not(.player-do-not-draft)" in css
+    assert "visibility: hidden" in css
+    assert ".granked.do-not-draft-player .pname" in css
+    assert "color: #ffffff" in css
+
+
+def test_removing_do_not_draft_requires_confirmation():
+    js = (ROOT / "ui" / "board-do-not-draft.js").read_text()
+    assert "window.confirm" in js
+    assert "Remove ' + name + ' from Do Not Draft?" in js
+    assert "if (!confirmRemoval(cell)) return" in js
