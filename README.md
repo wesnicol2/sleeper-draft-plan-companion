@@ -140,8 +140,9 @@ Negative context currently includes:
 - `TEAM×2` — same NFL team **and the same position** as a rostered player. This
   contributes two negative color-weight units because duplicated same-position
   opportunity is treated as a stronger concern.
-- `TEAM` — same NFL team but a different position outside a passing stack. This
-  contributes one negative color-weight unit.
+- `TEAM` — same NFL team but a different position outside a passing stack and
+  outside an RB + QB/WR/TE neutral pairing. This contributes one negative
+  color-weight unit.
 - `TEAM LOAD` — at least two other color-relevant same-team relationships, so
   drafting the candidate would create a concentrated team load.
 - `BYE` — exact same-position bye conflict with a rostered player, excluding
@@ -150,8 +151,9 @@ Negative context currently includes:
 - `BOTTOM 5 OFF` — plays for a configured bottom-five offense: Raiders,
   Dolphins, Browns, Cardinals, or Jets.
 
-A same-team **QB + RB pair is neutral** for this model: it is neither a STACK nor
-a TEAM penalty and does not contribute to TEAM LOAD or card color.
+Any same-team pair with exactly one **RB** and a **QB, WR, or TE** is neutral for
+this model: it is neither a STACK nor a TEAM penalty and does not contribute to
+TEAM LOAD or card color. RB + RB remains a same-position `TEAM×2` penalty.
 
 Color saturation is weighted rather than just badge-counted. The same-position
 `TEAM×2` badge therefore moves the card farther negative than a cross-position
