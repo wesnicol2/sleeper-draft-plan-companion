@@ -42,7 +42,7 @@
   function progressText(progress) {
     const rounds = plural(progress.roundsLeft, 'round') + ' left';
     if (progress.freePicks == null) return rounds;
-    return rounds + ' · ' + plural(progress.freePicks, 'free pick') + ' left';
+    return rounds + ', ' + plural(progress.freePicks, 'free pick') + ' left';
   }
 
   function progressClass(progress) {
@@ -51,22 +51,41 @@
     return '';
   }
 
-  function addBoardProgressMeta(board) {
+  function moveRowsDown(grid, fromRow) {
+    Array.from(grid.children).forEach((cell) => {
+      const start = Number(cell.style.gridRowStart);
+      if (!Number.isFinite(start) || start < fromRow) return;
+      cell.style.gridRowStart = String(start + 1);
+    });
+  }
+
+  function addBoardProgressBand(board) {
     const progress = checkpointProgress(board);
     if (!progress) return;
 
-    const meta = document.getElementById('boardMeta');
-    if (!meta) return;
+    const grid = document.getElementById('boardGrid');
+    if (!grid) return;
+    const needsGutter = Array.from(grid.querySelectorAll('.gutter')).find(
+      (cell) => cell.textContent.trim() === 'NEEDS',
+    );
+    if (!needsGutter) return;
 
-    const cp = board.checkpoint;
-    const prefix = cp && cp.name ? cp.name + ' · ' : '';
-    meta.className = 'muted checkpoint-progress-meta' + progressClass(progress);
-    meta.textContent = prefix + progressText(progress);
+    const needStart = Number(needsGutter.style.gridRowStart);
+    if (!Number.isFinite(needStart)) return;
+
+    moveRowsDown(grid, needStart);
+
+    const summary = document.createElement('div');
+    summary.className = 'gcell checkpoint-progress-summary' + progressClass(progress);
+    summary.style.gridRow = String(needStart);
+    summary.style.gridColumn = '1 / -1';
+    summary.textContent = progressText(progress);
+    grid.appendChild(summary);
   }
 
   renderBoard = function (board) {
     originalRenderBoard(board);
-    addBoardProgressMeta(board);
+    addBoardProgressBand(board);
   };
 
   window.checkpointProgress = checkpointProgress;
