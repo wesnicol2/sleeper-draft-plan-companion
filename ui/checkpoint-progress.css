@@ -1,0 +1,12 @@
+.checkpoint-progress-pill {
+  display: block;
+  width: fit-content;
+  margin-bottom: 0.4rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(63, 185, 80, 0.14);
+  color: var(--ok);
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
