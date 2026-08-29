@@ -39,6 +39,11 @@
     button.title = active ? 'Remove from Do Not Draft' : 'Add to Do Not Draft';
   }
 
+  function confirmRemoval(cell) {
+    const name = cell && cell.dataset.doNotDraftPlayerName || 'this player';
+    return window.confirm('Remove ' + name + ' from Do Not Draft?');
+  }
+
   function decorate(board) {
     const ranked = board && board.ranked || [];
     const cells = document.querySelectorAll('#boardGrid .granked');
@@ -48,6 +53,7 @@
       if (!key) return;
 
       cell.dataset.doNotDraftPlayerId = key;
+      cell.dataset.doNotDraftPlayerName = player.name || 'this player';
       cell.classList.toggle('do-not-draft-player', doNotDraft.has(key));
 
       const button = document.createElement('button');
@@ -69,6 +75,7 @@
     if (!key) return;
 
     if (doNotDraft.has(key)) {
+      if (!confirmRemoval(cell)) return;
       doNotDraft.delete(key);
     } else {
       doNotDraft.add(key);
@@ -81,6 +88,11 @@
   document.addEventListener('draft-companion-player-starred', event => {
     const key = event.detail && String(event.detail.key || '');
     if (!key || !doNotDraft.has(key)) return;
+    const cell = doNotDraftCell(key);
+    if (!confirmRemoval(cell)) {
+      document.dispatchEvent(new CustomEvent('draft-companion-player-do-not-draft', { detail: { key } }));
+      return;
+    }
     doNotDraft.delete(key);
     saveDoNotDraft();
     updateCell(key, false);

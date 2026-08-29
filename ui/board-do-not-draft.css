@@ -1,10 +1,19 @@
 .granked.do-not-draft-player {
+  background: #8f1d1d !important;
   outline: 2px solid #ff6b6b;
   outline-offset: 1px;
-  box-shadow: inset 0 0 0 999px rgba(255, 107, 107, 0.10);
+  box-shadow: none !important;
 }
 
-.granked.do-not-draft-player .pname { color: #ffd0d0; }
+.granked.do-not-draft-player > :not(.pname):not(.player-do-not-draft) {
+  visibility: hidden;
+}
+
+.granked.do-not-draft-player .pname {
+  color: #ffffff;
+  font-weight: 800;
+  opacity: 1;
+}
 
 .player-do-not-draft {
   position: absolute;
@@ -14,7 +23,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #ff6b6b;
+  color: #ffb3b3;
   font: inherit;
   font-size: 1.05rem;
   line-height: 1;
@@ -23,4 +32,4 @@
 
 .granked:has(.player-do-not-draft) { padding-right: 1.75rem; }
 .player-do-not-draft:hover { transform: scale(1.12); }
-.player-do-not-draft:focus-visible { outline: 2px solid #ff6b6b; outline-offset: 2px; border-radius: 2px; }
+.player-do-not-draft:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; border-radius: 2px; }
