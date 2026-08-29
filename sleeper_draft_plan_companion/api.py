@@ -12,7 +12,7 @@ from urllib.parse import parse_qs
 from wsgiref.simple_server import make_server
 
 from . import board as board_module
-from . import config, draft, sleeper
+from . import config, draft, preferences, sleeper
 from . import plan as plan_module
 
 JSON_HEADERS = [("Content-Type", "application/json; charset=utf-8")]
@@ -64,18 +64,14 @@ def board(query):
     if not draft_id:
         return {"configured": False, "detail": "SLEEPER_DRAFT_ID is not set"}
     fresh = query.get("fresh") in ("1", "true", "yes")
-    strength_parameters = {
-        key: query[key]
-        for key in ("alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE")
-        if key in query
-    }
     try:
         payload = board_module.build_board(
             draft_id,
             identity["username"],
             fresh=fresh,
-            strength_parameters=strength_parameters,
+            strength_parameters=preferences.load_general_preferences(),
         )
+        preferences.apply_player_preferences(payload)
     except Exception as exc:
         raise Unavailable(str(exc)) from exc
     payload["configured"] = True
