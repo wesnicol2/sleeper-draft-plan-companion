@@ -1,0 +1,19 @@
+.dart-toggle {
+  margin-left: auto;
+}
+
+.dart-toggle.active {
+  font-weight: 800;
+}
+
+.dart-throw-reason {
+  display: block;
+  margin-top: 0.28rem;
+  font-size: 0.72rem;
+  line-height: 1.2;
+  opacity: 0.9;
+}
+
+@media (max-width: 760px) {
+  .dart-toggle { margin-left: 0; }
+}
