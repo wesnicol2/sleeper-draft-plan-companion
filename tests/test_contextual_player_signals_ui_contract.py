@@ -61,8 +61,9 @@ def test_same_position_team_overlap_is_twice_cross_position_overlap():
         in js
     )
     assert "const weight = samePosition ? 2 : 1" in js
-    assert "samePosition ? 'TEAM×2' : 'TEAM'" in js
-    assert "same-position overlap" in js.lower()
+    team_times_two = "TEAM" + chr(0xD7) + "2"
+    assert f"samePosition ? '{team_times_two}' : 'TEAM'" in js
+    assert "'team-same-position'" in js
 
 
 def test_same_team_qb_rb_pair_is_neutral_for_card_color():
