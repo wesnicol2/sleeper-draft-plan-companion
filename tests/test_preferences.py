@@ -12,8 +12,10 @@ def test_repository_preference_files_are_structurally_valid():
 
     assert player_preferences
     assert all(
-        isinstance(record["starred"], bool)
-        and isinstance(record["do_not_draft"], bool)
+        (
+            isinstance(record["starred"], bool)
+            and isinstance(record["do_not_draft"], bool)
+        )
         for record in player_preferences.values()
     )
     assert {"alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"} <= set(
