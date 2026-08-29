@@ -67,6 +67,7 @@ def ranked_pool(players, taken_ids, limit, adp_index=None):
             "position": player.get("position"),
             "team": player.get("team"),
             "age": player.get("age"),
+            "bye_week": player.get("bye_week"),
             "rank_source": source,
             "rank_value": value,
         }
@@ -171,11 +172,14 @@ def _roster_structure(draft_id, fresh=False):
         return defaults, "league roster unavailable; using default starter structure"
 
 
-def _attach_roster_player_ids(state, all_picks):
+def _attach_roster_player_ids(state, all_picks, players):
     by_pick = {pick.get("pick_no"): pick.get("player_id") for pick in all_picks}
-    for players in (state.get("my_roster") or {}).values():
-        for player in players:
-            player["player_id"] = by_pick.get(player.get("pick_no"))
+    for rostered_players in (state.get("my_roster") or {}).values():
+        for player in rostered_players:
+            player_id = by_pick.get(player.get("pick_no"))
+            player["player_id"] = player_id
+            source = players.get(player_id) or {}
+            player["bye_week"] = source.get("bye_week")
 
 
 def _add_strength_context(state, needs, players, consensus_index, parameters, draft_id, fresh):
@@ -241,7 +245,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     all_picks = draft.get_picks(draft_id, fresh=fresh)
     taken = {pick["player_id"] for pick in all_picks if pick.get("player_id")}
     _infer_mock_slot(state, all_picks, username)
-    _attach_roster_player_ids(state, all_picks)
+    _attach_roster_player_ids(state, all_picks, players)
     rank_index, consensus_index, adp_error = adp_indexes_for(draft_id, players, fresh=fresh)
     if adp_error:
         state["adp_error"] = adp_error
