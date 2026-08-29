@@ -41,8 +41,7 @@ def test_contextual_signal_badges_are_grouped_on_player_card():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     css = (ROOT / "ui" / "board-signals.css").read_text()
     assert "context-signal-strip" in js
-    assert "context-signal-positive" in js
-    assert "context-signal-negative" in js
+    assert "'context-signal-' + item.polarity" in js
     assert ".context-signal-strip" in css
     assert ".context-signal-positive" in css
     assert ".context-signal-negative" in css
