@@ -12,7 +12,8 @@ def test_repository_preference_files_are_structurally_valid():
 
     assert player_preferences
     assert all(
-        isinstance(record["starred"], bool) and isinstance(record["do_not_draft"], bool)
+        isinstance(record["starred"], bool)
+        and isinstance(record["do_not_draft"], bool)
         for record in player_preferences.values()
     )
     assert {"alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"} <= set(
@@ -61,7 +62,10 @@ def test_general_preferences_parse_positive_numeric_values(tmp_path: Path):
         encoding="utf-8",
     )
 
-    assert preferences.load_general_preferences(csv_path) == {"alpha": 0.3, "beta_RB": 1.2}
+    assert preferences.load_general_preferences(csv_path) == {
+        "alpha": 0.3,
+        "beta_RB": 1.2,
+    }
 
 
 def test_apply_player_preferences_decorates_only_canonical_adp_rows(monkeypatch):
