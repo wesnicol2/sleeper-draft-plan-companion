@@ -35,7 +35,7 @@ def test_default_plan_matches_the_spec(data_dir):
     p = plan.load_plan()
     assert p["using_override"] is False
     rounds = [(c["first_round"], c["last_round"]) for c in p["checkpoints"]]
-    assert rounds == [(1, 3), (4, 6), (7, 9), (10, 14)]
+    assert rounds == [(1, 3), (4, 6), (7, 10), (11, 14)]
     assert [c["name"] for c in p["checkpoints"]] == [
         "Early Draft",
         "RB Deadzone",
@@ -61,7 +61,8 @@ def test_checkpoint_lookup_spans_its_rounds(data_dir):
     assert plan.checkpoint_for_round(p, 3)["name"] == "Early Draft"
     assert plan.checkpoint_for_round(p, 4)["name"] == "RB Deadzone"
     assert plan.checkpoint_for_round(p, 7)["name"] == "Flex Filler"
-    assert plan.checkpoint_for_round(p, 10)["name"] == "WR Cliff"
+    assert plan.checkpoint_for_round(p, 10)["name"] == "Flex Filler"
+    assert plan.checkpoint_for_round(p, 11)["name"] == "WR Cliff"
 
 
 def test_override_wins_over_the_packaged_default(data_dir):

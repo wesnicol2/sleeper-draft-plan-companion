@@ -22,14 +22,14 @@
     {
       "name": "Flex Filler",
       "first_round": 7,
-      "last_round": 9,
+      "last_round": 10,
       "minimums": {"RB": 2, "WR": 4, "QB": 0, "TE": 0},
       "lean": "WR",
       "guidance": "Fill in TE if you do not have one yet, without overpaying. Prioritise best available RB/WR value, leaning WR. Do not overpay for QB/TE depth yet."
     },
     {
       "name": "WR Cliff",
-      "first_round": 10,
+      "first_round": 11,
       "last_round": 14,
       "minimums": {"RB": 4, "WR": 4, "QB": 1, "TE": 1},
       "lean": null,
