@@ -1,26 +1,33 @@
+# ruff: noqa
 from pathlib import Path
 
-from sleeper_draft_plan_companion import board
+from sleeper_draft_plan_companion import board, bye
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_ranked_pool_exposes_bye_week():
+def test_2026_bye_week_mapping_covers_all_teams():
+    assert len(bye.BYE_WEEKS_BY_SEASON["2026"]) == 32
+    assert bye.team_bye_week("CAR", "2026") == 5
+    assert bye.team_bye_week("ARI", 2026) == 14
+    assert bye.team_bye_week("ARI", "2025") is None
+
+
+def test_ranked_pool_exposes_season_bye_week():
     players = {
         "p1": {
             "active": True,
             "position": "RB",
             "full_name": "Example Back",
             "team": "ARI",
-            "bye_week": 8,
             "search_rank": 1,
         }
     }
 
-    ranked = board.ranked_pool(players, set(), 32)
+    ranked = board.ranked_pool(players, set(), 32, season="2026")
 
-    assert ranked[0]["bye_week"] == 8
+    assert ranked[0]["bye_week"] == 14
 
 
 def test_bye_week_signal_assets_are_wired():
