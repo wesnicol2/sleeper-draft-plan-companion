@@ -246,12 +246,12 @@ def test_state_reports_the_active_checkpoint_and_shortfall(monkeypatch, tmp_path
     state = draft.build_state("d1", "wesnicol")
 
     cp = state["checkpoint"]
-    assert cp["name"] == "Rounds 7-9"
-    assert cp["minimums"] == {"RB": 3, "WR": 4}
+    assert cp["name"] == "Flex Filler"
+    assert cp["minimums"] == {"RB": 2, "WR": 4, "QB": 0, "TE": 0}
     assert state["my_counts"] == {"QB": 1, "RB": 2, "WR": 3, "TE": 2}
-    # RB is one short of 3, WR one short of 4. QB and TE have no minimum here
-    # and must not appear even though the roster holds some.
-    assert cp["still_needed"] == {"RB": 1, "WR": 1}
+    # RB minimum is met, WR is one short of 4. Zero QB/TE minimums must not
+    # appear as needs even though those positions are represented on the roster.
+    assert cp["still_needed"] == {"WR": 1}
     assert cp["lean"] == "WR"
 
 

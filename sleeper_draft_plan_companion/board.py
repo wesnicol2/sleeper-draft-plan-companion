@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from . import adp, decision, draft, sleeper, strength
+from . import adp, bye, decision, draft, sleeper, strength
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
@@ -36,7 +36,7 @@ def criteria_count(position: str, still_needed: dict[str, Any], lean: str | None
     return int(bool(still_needed.get(position))) + int(position == lean)
 
 
-def ranked_pool(players, taken_ids, limit, adp_index=None):
+def ranked_pool(players, taken_ids, limit, adp_index=None, season=None):
     if limit < 1:
         return []
     adp_index = adp_index or {}
@@ -67,6 +67,7 @@ def ranked_pool(players, taken_ids, limit, adp_index=None):
             "position": player.get("position"),
             "team": player.get("team"),
             "age": player.get("age"),
+            "bye_week": bye.team_bye_week(player.get("team"), season),
             "rank_source": source,
             "rank_value": value,
         }
@@ -173,9 +174,11 @@ def _roster_structure(draft_id, fresh=False):
 
 def _attach_roster_player_ids(state, all_picks):
     by_pick = {pick.get("pick_no"): pick.get("player_id") for pick in all_picks}
-    for players in (state.get("my_roster") or {}).values():
-        for player in players:
+    season = state.get("season")
+    for rostered_players in (state.get("my_roster") or {}).values():
+        for player in rostered_players:
             player["player_id"] = by_pick.get(player.get("pick_no"))
+            player["bye_week"] = bye.team_bye_week(player.get("team"), season)
 
 
 def _add_strength_context(state, needs, players, consensus_index, parameters, draft_id, fresh):
@@ -258,7 +261,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
         future_picks[0] - current_pick if future_picks and current_pick is not None else None
     )
     lean = (checkpoint or {}).get("lean")
-    ranked = ranked_pool(players, taken, rows, rank_index)
+    ranked = ranked_pool(players, taken, rows, rank_index, season=state.get("season"))
     positions_by_player = {pid: player.get("position") for pid, player in players.items()}
     current_model = {
         "positions": state["positional_strength"],
@@ -324,7 +327,7 @@ def explain_rankings(draft_id, limit=40, fresh=False):
         if pick.get("player_id")
     }
     adp_index, _scoring, adp_error = adp_index_for(draft_id, players, fresh=fresh)
-    ranked = ranked_pool(players, taken, limit, adp_index)
+    ranked = ranked_pool(players, taken, limit, adp_index, season=raw_draft.get("season"))
     counts_by_value = {}
     for entry in ranked:
         key = (entry["rank_source"], entry["rank_value"])
