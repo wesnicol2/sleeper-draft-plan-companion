@@ -12,7 +12,7 @@
     const fallbackRank = rankById.get(fallback.player_id);
     const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
     const distanceText = distance == null
-      ? 'beyond shown 32'
+      ? 'not currently shown'
       : (distance === 0 ? 'same player' : '↓' + distance + ' spots');
     return 'NEXT → ' + fallback.name + ' · ' + distanceText + ' · ' + costText(cost);
   }
@@ -37,8 +37,11 @@
     const cells = Array.from(grid.querySelectorAll('.granked'));
     const metaLabel = document.getElementById('boardMeta');
     const checkpoint = board.checkpoint;
-    metaLabel.textContent = (checkpoint ? checkpoint.name + ' · ' : '') +
-      'next ' + ranked.length + ' available';
+
+    const isDartThrow = Boolean(board.dart_throw_active);
+    metaLabel.textContent = isDartThrow
+      ? 'DART THROW mode · ' + ranked.length + ' available'
+      : (checkpoint ? checkpoint.name + ' · ' : '') + ranked.length + ' available players';
 
     const rankById = new Map(ranked.map((player) => [player.player_id, player.rank]));
     const cellById = new Map();
@@ -75,7 +78,7 @@
         distance: distance,
       });
 
-      if (fallbackRank != null && distance > 0) {
+      if (!isDartThrow && fallbackRank != null && distance > 0) {
         addFallbackRail(grid, cell, cellById.get(fallbackId));
       }
     });
@@ -87,15 +90,22 @@
       targets.forEach((target) => {
         const badge = document.createElement('span');
         badge.className = 'board-fallback-badge';
-        const distance = target.distance == null ? '>32' : '↓' + target.distance;
+        const distance = target.distance == null ? 'off board' : '↓' + target.distance;
         badge.textContent = target.position + ' NEXT · ' + distance;
         cell.appendChild(badge);
       });
     });
 
+    if (isDartThrow) return;
+
     const marker = (board.future_pick_markers || [])[0];
     if (!marker || !cells.length) return;
 
+    const beyondShownLimit = Boolean(
+      board.normal_board_limit &&
+      marker.before_rank != null &&
+      marker.before_rank > ranked.length
+    );
     let row;
     if (marker.before_rank != null && cells[marker.before_rank - 1]) {
       row = cells[marker.before_rank - 1].style.gridRowStart;
@@ -109,7 +119,9 @@
     markerEl.style.gridRow = row;
     markerEl.style.gridColumn = '1 / -1';
     markerEl.innerHTML = '<span>YOUR NEXT PICK #' + marker.pick_no +
-      (marker.beyond_board ? ' · beyond shown 32' : '') + '</span>';
+      (beyondShownLimit
+        ? ' · beyond shown ' + board.normal_board_limit
+        : (marker.beyond_board ? ' · beyond canonical ADP range' : '')) + '</span>';
     grid.appendChild(markerEl);
   }
 

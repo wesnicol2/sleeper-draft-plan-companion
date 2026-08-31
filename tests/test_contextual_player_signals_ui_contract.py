@@ -22,9 +22,10 @@ def test_contextual_signal_catalog_has_positive_and_negative_roster_context():
     for label in ("TEAM", "TEAM LOAD", "BYE", "BYE LOAD", "BOTTOM 5 OFF"):
         assert f"'{label}'" in js
     assert "isPassStackPair" in js
+    assert "isNeutralTeamPair" in js
     assert "samePositionBye" in js
     assert "samePositionBye.length >= 2" in js
-    assert "sameTeam.length >= 2" in js
+    assert "coloredTeamRelationships.length >= 2" in js
 
 
 def test_need_and_positional_strength_do_not_color_player_cards():
@@ -53,6 +54,27 @@ def test_same_team_relationship_replaces_redundant_bye_signal():
     assert "relationship already has a stronger TEAM or STACK signal" in js
 
 
+def test_same_position_team_overlap_is_twice_cross_position_overlap():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert (
+        "const samePosition = nonStackTeam.some((rostered) => rostered.position === player.position)"
+        in js
+    )
+    assert "const weight = samePosition ? 2 : 1" in js
+    team_times_two = "TEAM" + chr(0xD7) + "2"
+    assert f"samePosition ? '{team_times_two}' : 'TEAM'" in js
+    assert "'team-same-position'" in js
+
+
+def test_same_team_rb_with_qb_wr_or_te_is_neutral_for_card_color():
+    js = (ROOT / "ui" / "board-signals.js").read_text()
+    assert "function isNeutralTeamPair" in js
+    assert "positions.size !== 2 || !positions.has('RB')" in js
+    assert "positions.has('QB') || positions.has('WR') || positions.has('TE')" in js
+    assert "!isNeutralTeamPair(player, rostered)" in js
+    assert "coloredTeamRelationships" in js
+
+
 def test_bye_signals_only_compare_the_exact_same_position():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     assert "rostered.position === player.position" in js
@@ -72,9 +94,10 @@ def test_contextual_offense_tiers_match_configured_teams():
     assert "'bottom-offense', 'BOTTOM 5 OFF'" in js
 
 
-def test_contextual_signal_color_blends_green_red_and_brown_by_signal_counts():
+def test_contextual_signal_color_blends_weighted_green_red_and_brown():
     js = (ROOT / "ui" / "board-signals.js").read_text()
     assert "SATURATION_SIGNALS = 3" in js
+    assert "total + item.weight" in js
     assert "positiveCount / SATURATION_SIGNALS" in js
     assert "negativeCount / SATURATION_SIGNALS" in js
     assert "conflict = Math.min(positive, negative)" in js

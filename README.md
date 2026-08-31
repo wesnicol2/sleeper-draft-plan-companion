@@ -1,14 +1,15 @@
 # sleeper-draft-plan-companion
 
 A second-screen companion for a live Sleeper fantasy football draft. It follows
-the draft as it happens, compares it against the configured draft plan, ranks the
-available pool, and adds explainable **Cost of waiting** and roster-context
-signals directly to the main draft board for the four tracked positions.
+the draft automatically, compares the roster with a configured checkpoint plan,
+shows the next 100 available QB/RB/WR/TE players in Normal mode, and layers
+explainable decision context onto the board without changing the canonical
+player ranking.
 
-What it should eventually do is specified in
-[docs/draft-companion-planning/](docs/draft-companion-planning/); what it does
-today is described here. Human-owned planning documents under `docs/` are not
-changed as implementation evolves.
+The application deliberately keeps ranking, roster requirements, Cost of
+waiting, positional strength, contextual signals, personal preferences, and Dart
+Throw mode as separate facts. That makes the board inspectable when one signal
+looks wrong instead of hiding every opinion inside one master score.
 
 ## Run it
 
@@ -22,17 +23,10 @@ docker run -d \
   ghcr.io/wesnicol2/sleeper-draft-plan-companion:latest
 ```
 
-Then open `http://<host>:8082/` for the UI, or `/health` for the JSON probe. Or
-use the compose file:
-
-```bash
-cp .env.example .env
-docker compose up -d
-```
-
-The compose file brings up Production (`:latest`, `$PROD_PORT`, default 8082)
-and Test (`:test`, `$TEST_PORT`, default 8083) with separate data volumes. The
-environment and promotion rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Then open `http://<host>:8082/`, or `/health` for the JSON probe. The compose
+file runs Production (`:latest`, default port 8082) and Test (`:test`, default
+port 8083) with separate data volumes. Promotion rules are in
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Configuration
 
@@ -48,8 +42,19 @@ environment and promotion rules are in [CONTRIBUTING.md](CONTRIBUTING.md).
 | `SLEEPER_DRAFT_ID` | no | — | Default draft; browser selection overrides it |
 | `SLEEPER_DRAFT_SLOT` | no | — | Forces the slot when a mock has not published draft order |
 
-The canonical ranking input is the repository's static `resources/adp.csv`.
-FantasyPros is no longer used by the live board or Cost of waiting model.
+The repository also contains authoritative draft preferences:
+
+- `resources/adp.csv` — canonical board order plus Consensus ADP valuation data.
+- `resources/player-preferences.csv` — starred and Do Not Draft flags.
+- `resources/general-preferences.csv` — positional-strength `alpha` and `beta_*`
+  values.
+- `resources/dart-throws.csv` — ordered Dart Throw candidates and their rationale.
+
+These files are copied into the image. Starred, Do Not Draft, strength-model
+parameters, and the Dart Throw list therefore stay consistent across browsers,
+container recreation, Test, and Production for a given deployed commit. They
+cannot be changed from the UI or `/board` query parameters; edit the repository
+CSV and promote the change normally.
 
 ## Run from source
 
@@ -79,181 +84,197 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/plan` — active checkpoint plan and its source.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
-- `/board` — the 32-player board plus Cost of waiting and weighted positional
-  strength context. Accepts `?draft_id=` and `?fresh=1`.
-- `/rankings` — debugging view showing why the ranked pool is ordered as it is.
+- `/board` — available-player data plus Cost of waiting, positional strength,
+  repository preferences, and Dart Throw metadata. Normal mode renders the first
+  100 ordered players from this payload. Accepts `?draft_id=` and `?fresh=1`.
+- `/rankings` — debugging view showing why the requested ranking slice is ordered
+  as it is.
 
 ## The board
 
-The main grid reads vertically as rank and horizontally as position. The four
-tracked positions are QB, RB, WR, and TE. Columns with an unmet checkpoint need
-come first; already-satisfied positions are ordered by **weighted positional
-strength**, weakest first.
+The main grid reads vertically as overall order and horizontally as position.
+The tracked positions are QB, RB, WR, and TE. Columns sort first by largest
+remaining checkpoint shortfall, then by lowest positional strength, with a fixed
+position order only as a deterministic final tie-break.
 
 Top to bottom:
 
 | Band | What it holds |
 | --- | --- |
-| Header | Position, weighted strength, and checkpoint need |
-| **Drafted** | The user's roster at that position, including each player's strength contribution |
+| Header | Position, strength, and checkpoint need |
+| **Drafted** | The user's roster at that position, including credited market value |
 | *solid line* | Separation between owned and available players |
 | **Needs** | Outstanding checkpoint positional minimums |
-| **Ranked** | The next 32 best undrafted players, one player per rank row |
+| **Ranked** | The next 100 active, undrafted QB/RB/WR/TE players |
 
-The ranked band always shows up to **32 available players**; checkpoint length no
-longer controls that horizon. Ranked cards carry compact contextual-signal badges
-and a background tint derived from their positive/negative roster fit. Cost of
-waiting is concentrated on the best current static-ADP player at each position
-and the fallback projected at the user's next pick.
+Normal mode has a fixed 100-player display horizon. Ordering still uses canonical
+static ADP first, then Sleeper `search_rank`, then active tracked players with
+neither usable ranking source in a deterministic name/player-ID tail. The server
+retains the broader available pool so repository-configured Dart Throws can still
+surface even when a deep candidate falls outside the Normal-mode top 100.
 
-For each QB/RB/WR/TE anchor, the board shows the fallback player's name, how many
-current board spots lower that fallback sits, and the static-ADP deterioration.
-The fallback player's actual row is outlined and tagged, with a vertical rail
-connecting the best-current player to that fallback when it is within the shown
-32.
+Static CSV ADP remains authoritative where available. `/rankings` exposes each
+row's `rank_source` and `rank_value` so ADP, Sleeper fallback, and unranked rows
+remain distinguishable.
 
-A horizontal marker shows where the user's next projected selection falls on the
-static-ADP curve. It is placed before the first displayed player whose canonical
-ADP is at or after that projected pick; if the boundary is beyond the 32-player
-window, the marker is shown at the bottom and labeled accordingly.
+### Starred and Do Not Draft
 
-Static CSV ADP is authoritative for players matched to `resources/adp.csv`.
-The existing board may use Sleeper `search_rank` as a fallback for unmatched
-players; `/rankings` exposes `rank_source` and `rank_value` so that fallback is
-visible rather than implicit.
-
-The checkpoint system remains intact. Cost of waiting, weighted strength, and
-contextual signals are additional decision context, not replacements for
-checkpoint minimums or canonical ranking.
+`resources/player-preferences.csv` is read-only application configuration.
+Starred is a presentation-only target marker. Do Not Draft is a presentation-only
+hard red treatment that hides secondary card information. Neither changes rank,
+Cost of waiting, strength, or checkpoint need, and neither has an in-browser
+mutation path.
 
 ## Contextual player signals
 
-Contextual signals describe how a candidate fits the roster and active draft
-plan. They are presentation-only: they do not change canonical rank, Cost of
-waiting, or the checkpoint calculations.
+Contextual signals affect card presentation only; they do not reorder players.
+Badges remain visible so the color is explainable.
 
-Positive signals currently include:
+Positive context currently includes:
 
-- `NEED` — fills an outstanding checkpoint positional need;
-- `LEAN` — matches the checkpoint lean;
-- `WEAK` — plays the uniquely weakest current position by weighted strength;
-- `STACK` — creates a same-team QB + WR/TE stack with a rostered player;
-- `TOP 5 OFF` — plays for one of the configured top-five offenses: Rams, Bills,
-  Lions, Bengals, or Ravens.
+- `LEAN` — matches the active checkpoint lean.
+- `STACK` — creates a same-team QB + WR/TE passing stack.
+- `TOP 5 OFF` — plays for a configured top-five offense: Rams, Bills, Lions,
+  Bengals, or Ravens.
 
-Negative signals currently include:
+Negative context currently includes:
 
-- `BYE` — conflicts with a rostered same-position player's bye week;
-- `BYE LOAD` — would put at least three rostered players on the same bye week;
-- `TEAM` — overlaps with a rostered player from the same NFL team outside a
-  QB + WR/TE stack relationship;
-- `TEAM LOAD` — would put at least three players from the same NFL team on the
-  roster;
-- `BOTTOM 5 OFF` — plays for one of the configured bottom-five offenses: Raiders,
+- `TEAM×2` — same NFL team **and the same position** as a rostered player. This
+  contributes two negative color-weight units because duplicated same-position
+  opportunity is treated as a stronger concern.
+- `TEAM` — same NFL team but a different position outside a passing stack and
+  outside an RB + QB/WR/TE neutral pairing. This contributes one negative
+  color-weight unit.
+- `TEAM LOAD` — at least two other color-relevant same-team relationships, so
+  drafting the candidate would create a concentrated team load.
+- `BYE` — exact same-position bye conflict with a rostered player, excluding
+  same-team relationships already represented by TEAM/STACK.
+- `BYE LOAD` — would create at least three same-position players sharing a bye.
+- `BOTTOM 5 OFF` — plays for a configured bottom-five offense: Raiders,
   Dolphins, Browns, Cardinals, or Jets.
 
-Every signal stays visible as a compact `+` or `−` badge with an explanatory
-tooltip. Card background color summarizes the balance. Three signals saturate
-each side: one positive signal gives a light green tint, three or more positive
-signals with no negatives produce full green, three or more negatives with no
-positives produce full red, and strong positive plus strong negative context
-converges on brown. Mixed unequal cases blend brown toward the dominant side.
+Any same-team pair with exactly one **RB** and a **QB, WR, or TE** is neutral for
+this model: it is neither a STACK nor a TEAM penalty and does not contribute to
+TEAM LOAD or card color. RB + RB remains a same-position `TEAM×2` penalty.
 
-Do Not Draft is intentionally stronger than contextual coloring. A blocked card
-uses the dedicated full-red treatment and hides all secondary information except
-the player name and unblock control.
+Color saturation is weighted rather than just badge-counted. The same-position
+`TEAM×2` badge therefore moves the card farther negative than a cross-position
+`TEAM` badge while remaining visibly one explainable relationship.
 
 ## Cost of waiting
 
-Cost of waiting is shown **only on the main draft board**. There is no separate
-Cost of waiting panel. The board answers: **if I pass the best player available
-at this position, who does static ADP suggest I may have to settle for at my
-next projected pick, and how far down the board is that player?**
+Cost of waiting asks a narrow question: if the best currently available player
+at a position is passed, who does static ADP suggest may remain at the user's
+next scheduled pick, and how far down the current Normal-mode board window is
+that fallback?
 
-For each tracked position the board exposes:
-
-- the best available static-ADP player now, visibly marked **BEST QB/RB/WR/TE**;
-- the fallback player's name at the user's next projected selection;
-- the fallback's distance down the current 32-player board (`↓N spots`);
-- **ADP loss if waiting**, calculated as fallback ADP minus current-player ADP;
-- the actual fallback row, highlighted and connected to the position anchor.
-
-The MVP availability assumption is deliberately simple:
+The deterministic availability rule is:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
-The fallback is the best undrafted same-position player satisfying that rule. If
-the best-current player's own ADP is already at or after that pick, that same
-player is its own fallback and its cost is zero. If no same-position player
-satisfies the rule, the fallback is shown as unavailable rather than invented.
+For each position the board marks the best current static-ADP player, the next
+projected fallback, the fallback's board distance, and:
 
-`ADP loss if waiting` is an **ordinal ADP-rank deterioration**, not a player-value
-metric. The MVP deliberately does not convert it into a value percentage or a
-Draft now / Consider now / Can wait verdict because those transformations have
-not yet been empirically calibrated.
+`ADP loss if waiting = fallback ADP rank - candidate ADP rank`
 
-Checkpoint need is intentionally separate and does not alter the cost number.
+That is ordinal ADP deterioration, not fantasy-value loss. Checkpoint need stays
+separate and does not alter the number. Missing static ADP remains explicitly
+unavailable rather than silently substituting Sleeper rank.
 
-## Weighted positional strength
+The horizontal next-pick marker is anchored to canonical ADP rows. If the
+projected boundary falls outside the first 100 displayed players, the marker is
+placed after the visible range and labeled `beyond shown 100`. If the canonical
+ADP range itself cannot reach the projected pick, that remains a separate
+`beyond canonical ADP range` case.
 
-Roster count alone does not distinguish an early-round starter from a late-round
-dart throw. The current MVP therefore assigns every rostered QB/RB/WR/TE a draft
-investment contribution:
+## Positional strength
 
-`player strength = 1 / draft_round²`
+Positional strength uses Consensus ADP as a market-value input. For positive
+Consensus ADP `a`:
 
-Examples: Round 1 = `1.000`, Round 2 = `0.250`, Round 3 = `0.111`, Round 5 =
-`0.040`, Round 10 = `0.010`.
+`V = a^(-alpha)`
 
-A position's strength is the sum of its rostered players' contributions. The
-board exposes both the total in the position header (`S 1.250`) and each drafted
-player's individual contribution (`S +1.000`). If the active checkpoint still
-requires players at that position, that count remains visible beside strength.
+`alpha` and positional `beta_QB`, `beta_RB`, `beta_WR`, and `beta_TE` values are
+loaded from `resources/general-preferences.csv`.
 
-Checkpoint minimums are still count-based. Strength does **not** silently change
-`still_needed`; it provides a separate description of how much draft investment
-is already held at that position. When checkpoint shortfalls are equal or absent,
-board column order uses lower positional strength before raw roster count.
+The model derives league-relative finished-roster targets from required starters
+and proportional RB/WR FLEX demand. Rostered players that fill starter/FLEX
+capacity receive their applicable market-value credit. Players beyond that
+capacity still receive diminishing bench-depth credit: first bench-depth player
+gets `1/2` of market value, the next `1/3`, then `1/4`, and so on.
 
-This is intentionally only a draft-investment proxy. It is not WAR and should be
-replaced later if a defensible player-value model becomes available.
+Displayed strength is credited roster value divided by the adjusted positional
+target. `1.00` means the target has been reached; values above `1.00` are valid.
+Candidate cards show the resulting positional strength and delta if that player
+were drafted. Checkpoint minimums remain count-based and separate.
+
+See [docs/positional-strength-model.md](docs/positional-strength-model.md) for the
+mathematical specification.
+
+## Dart Throw mode
+
+Dart Throw mode becomes available only when **QB, RB, WR, and TE are each at
+strength `1.00` or higher**. At that point the board header exposes a Normal / Dart
+Throw toggle.
+
+Normal mode shows only the next 100 ordered players. Dart Throw mode:
+
+- shows only currently available players configured in
+  `resources/dart-throws.csv`, even when a configured candidate is deeper than
+  the Normal-mode 100-player horizon;
+- ignores normal ADP order and uses the CSV's explicit static `order`;
+- keeps each player's ordinary card treatment, including strength, contextual
+  signals, stars, and Do Not Draft;
+- adds the repository rationale explaining why that candidate is a dart throw;
+- automatically omits candidates already drafted or not present in Sleeper's
+  active player pool;
+- reports configured names that could not be matched so a stale list is visible;
+- suppresses Cost-of-waiting rails and the ADP next-pick marker while the static
+  Dart Throw order is displayed, because those geometric overlays only make
+  sense on canonical board order.
+
+The rationale text is deliberately personal scouting context, not an assertion
+that the underlying news/injury premise has been independently verified by the
+application. The full behavior is specified in
+[docs/dart-throw-mode.md](docs/dart-throw-mode.md).
 
 ## Draft plan
 
 Checkpoints and positional minimums live in configuration, not Python. The
 packaged `sleeper_draft_plan_companion/draft_plan.json` is the default; a
-`draft_plan.json` in the mounted data directory overrides it.
-
-Minimums are cumulative roster totals by the end of a checkpoint. A broken
-override falls back to the packaged plan and is reported by `/plan`.
-
-The shipped plan covers rounds 1–14. Defense and kicker remain outside the
-board's current scope.
+`draft_plan.json` in the mounted data directory overrides it. Minimums are
+cumulative roster totals by the end of a checkpoint. Defense and kicker remain
+outside the board's current scope.
 
 ## Refresh behavior
 
-The board is designed to update without interaction. During an active draft the
-main polling loop runs every 2 seconds; idle/completed states poll less often.
-The server keeps a short live-draft cache to avoid request bursts. The Refresh
-button is an escape hatch and sends `?fresh=1` for live draft state.
+The board polls every 2 seconds during an active draft and less often otherwise.
+The server keeps a short live-draft cache to avoid request bursts. Manual Refresh
+is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads.
 
 ## Project structure
 
-- `sleeper_draft_plan_companion/` — Python application.
+- `sleeper_draft_plan_companion/`
   - `api.py` — stdlib WSGI entrypoint.
   - `sleeper.py` — Sleeper client/cache.
   - `draft.py` — live draft state and snake-pick projection.
   - `adp.py` — static ADP loading and Sleeper-player matching.
   - `plan.py` — checkpoint-plan loading.
-  - `board.py` — board assembly, 32-player horizon, future-pick markers, and decision-context integration.
+  - `board.py` — available-pool assembly, future-pick markers, strength, and decision context.
   - `decision.py` — deterministic Cost of waiting context.
-  - `strength.py` — inverse-square roster-strength calculation.
+  - `strength.py` — Consensus-ADP positional-strength model.
+  - `preferences.py` — repository-backed personal/model/Dart Throw configuration.
 - `resources/adp.csv` — canonical static ADP input.
-- `ui/` — plain HTML/CSS/vanilla JS; `board-signals.js` owns contextual signal presentation; no build step.
-- `tests/` — unit tests.
+- `resources/player-preferences.csv` — starred / Do Not Draft source.
+- `resources/general-preferences.csv` — strength-model parameters.
+- `resources/dart-throws.csv` — static Dart Throw order and rationale.
+- `ui/` — plain HTML/CSS/vanilla JS; no build step.
+- `tests/` — unit and UI-contract tests.
 - `docs/` — human-owned long-form planning/specification documents.
 
 ## Docs
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — environments, branching, CI/CD, hygiene.
 - [AGENTS.md](AGENTS.md) — architectural reasoning and implementation history.
+- [docs/positional-strength-model.md](docs/positional-strength-model.md) — strength math.
+- [docs/dart-throw-mode.md](docs/dart-throw-mode.md) — late-draft Dart Throw behavior.

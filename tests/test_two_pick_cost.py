@@ -67,5 +67,5 @@ def test_pick_markers_use_canonical_adp_boundary():
     assert markers[1]["before_rank"] == 3
 
 
-def test_board_is_always_32_ranked_rows():
-    assert board.BOARD_ROWS == 32
+def test_board_ranked_horizon_is_uncapped():
+    assert not hasattr(board, "BOARD_ROWS")
