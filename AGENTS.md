@@ -44,7 +44,7 @@ The service is intentionally small:
 - `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
   Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
-- `board.py` assembles the full available-player board, future-pick markers,
+- `board.py` assembles the available-player pool, future-pick markers,
   positional strength, and joined ADP/plan context.
 - `decision.py` owns Cost of waiting context.
 - `strength.py` owns the Consensus-ADP positional-strength model.
@@ -116,10 +116,11 @@ Defense and kicker remain outside the board. Their selection logic requires
 inputs that the current Sleeper path does not supply, so adding them is not just
 adding two columns.
 
-## Full-board ordering
+## Available-pool ordering and the 100-player Normal horizon
 
-The board has no artificial row horizon. Every active, undrafted Sleeper player
-at QB/RB/WR/TE is eligible to appear.
+The backend retains the ordered available QB/RB/WR/TE pool, but Normal draft mode
+shows only the first 100 available players. The 100-player horizon is a display
+choice, not a new ranking rule.
 
 Ordering remains explicit and deterministic:
 
@@ -128,14 +129,16 @@ Ordering remains explicit and deterministic:
 3. remaining active tracked players, ordered by normalized display name then
    player ID as an unranked tail.
 
-This third tier is deliberate. "Show all players" is not satisfied if a deep
-rookie disappears merely because both ranking sources are missing. `rank_source`
-and `rank_value` make the three cases inspectable.
+The broader backend pool is intentional even though Normal mode stops at 100.
+Dart Throw mode may need to surface a repository-configured deep player outside
+that horizon, so capping `payload.ranked` itself would make Dart Throw behavior
+depend on normal-board visibility. `rank_source` and `rank_value` keep the full
+ordering inspectable while `ui/board-limit.js` owns the Normal-mode slice.
 
-Removing the 32-row horizon also changes an important UI assumption: Cost-of-
-waiting fallbacks and next-pick markers should no longer say "beyond shown 32."
-If a canonical ADP boundary cannot be found, it is beyond the canonical ADP
-range, not beyond an arbitrary viewport.
+Cost-of-waiting fallbacks may also land outside the visible 100. In that case the
+fallback summary says it is not currently shown, and the next-pick marker is
+placed after the visible range with a `beyond shown 100` label. A true canonical
+ADP exhaustion remains a separate `beyond canonical ADP range` condition.
 
 ## Static ADP and Cost of waiting
 
@@ -192,11 +195,11 @@ So the first bench-depth player receives `1/2`, then `1/3`, `1/4`, and so on.
 The denominator remains the adjusted starter/FLEX target, so strength above
 `1.00` is valid and represents useful depth beyond that target.
 
-The board calculates hypothetical ending strength for every visible candidate.
-Because the full board may contain hundreds of candidates, candidate calculation
-must reuse the already-built league target rather than rebuild the league-wide
-market target from scratch for each player. Recompute roster contribution; do
-not recompute an unchanged denominator.
+The backend calculates hypothetical ending strength across its available-player
+payload. Because that pool may contain hundreds of candidates even though Normal
+mode displays only 100, candidate calculation must reuse the already-built league
+target rather than rebuild the league-wide market target from scratch for each
+player. Recompute roster contribution; do not recompute an unchanged denominator.
 
 Checkpoint `still_needed` remains count-based. Column order uses checkpoint need
 first, then lower positional strength.
@@ -254,7 +257,7 @@ makes any position fall below the threshold, Dart mode exits automatically.
 In Dart Throw mode:
 
 - only currently available players matched from `resources/dart-throws.csv` are
-  shown;
+  shown, including configured players outside the Normal-mode top 100;
 - CSV `order` replaces normal board order;
 - ordinary card enrichments still run: strength, contextual signals, stars, and
   Do Not Draft;
@@ -274,7 +277,8 @@ state. See [`docs/dart-throw-mode.md`](docs/dart-throw-mode.md).
 
 Board cells carry explicit grid row/column placement because band labels and row
 spans can otherwise shift unrelated columns. The normal ranked band uses the
-server-provided order; the frontend does not re-rank it.
+server-provided order and takes only the first 100 rows; the frontend does not
+re-rank those rows.
 
 ### Wrapper modules preserve one render pipeline
 
@@ -282,7 +286,9 @@ Several UI files wrap the global `renderBoard` function to add Cost of waiting,
 strength, contextual signals, Do Not Draft, stars, and Dart rationale. Wrapper
 order matters. Any mode that filters the board must create the final board view
 before `renderBoard` is called so every enhancer sees the same player list and
-cell index mapping.
+cell index mapping. `board-limit.js` wraps `boardForCurrentMode` immediately after
+`script.js`, before the render enhancers, so Normal-mode slicing happens once and
+Dart Throw mode can explicitly bypass it.
 
 ### Draft-time controls are deliberately scarce
 
@@ -322,8 +328,8 @@ private home-server Test container has already pulled and been exercised.
 ## Repo history worth not relearning
 
 - **Sleeper `search_rank` is not canonical ADP.** It is a visible fallback only.
-- **Deep active players must not disappear for lack of rank.** Full-board mode
-  keeps an explicit unranked tail.
+- **The Normal board horizon is 100, but Dart Throw matching needs the broader
+  pool.** Keep display limiting separate from the backend available-player data.
 - **Ordinal ADP movement is not player-value loss.** Do not derive fake cardinal
   value or scarcity percentages from Cost of waiting.
 - **Uncalibrated urgency thresholds are worse than raw evidence.** Show the

@@ -10,11 +10,10 @@ PRODUCT GOAL
 CURRENT IMPLEMENTED FOUNDATION
 - Tracks Sleeper draft state, the user's roster, snake-draft timing, and the
   configured checkpoint plan.
-- Normal board shows every active, undrafted QB/RB/WR/TE known to Sleeper; there
-  is no fixed 32-player horizon.
+- Normal board shows the next 100 active, undrafted QB/RB/WR/TE players.
 - Player ordering uses repository static ADP first, Sleeper search_rank as an
-  explicit fallback, then a deterministic unranked tail so deep players are not
-  dropped just because ranking data is missing.
+  explicit fallback, then a deterministic unranked tail. The backend retains the
+  broader available pool so deep configured Dart Throws can still surface.
 - Cost of waiting compares canonical static ADP now vs the same-position fallback
   at the user's next projected pick. This is ordinal ADP deterioration, not WAR.
 - Positional strength uses Consensus ADP market value, league starter/FLEX
@@ -46,9 +45,10 @@ CONTEXTUAL PLAYER SIGNALS
 DART THROW MODE
 - Unlock only after QB, RB, WR, and TE positional strength are each >= 1.00.
 - Then expose a Normal / DART THROW view toggle.
-- Normal mode stays unchanged.
+- Normal mode shows only the next 100 ordered players.
 - Dart Throw mode shows only currently available players from
-  resources/dart-throws.csv, in the exact static order defined there.
+  resources/dart-throws.csv, in the exact static order defined there, even if a
+  configured player falls outside the Normal-mode top 100.
 - Each dart card remains the same underlying card with its normal strength,
   contextual color/signals, Starred and Do Not Draft treatment, plus the
   repository rationale explaining the upside thesis.
@@ -75,8 +75,9 @@ NEXT MODELING WORK
 VALIDATION PRIORITIES
 - Real Sleeper mock drafts across early RB-heavy, WR-heavy, late-RB, early QB/TE,
   and delayed QB/TE builds.
-- Confirm the full uncapped board remains responsive while candidate strength is
-  calculated for every available player.
+- Confirm Normal mode consistently shows only the first 100 ordered available
+  players while Dart Throw mode can still surface configured candidates deeper
+  than that display horizon.
 - Confirm same-position team overlap is visibly stronger than eligible
   cross-position overlap and all RB + QB/WR/TE same-team pairs are neutral.
 - Confirm repository Starred/Do Not Draft/model settings are identical in Test

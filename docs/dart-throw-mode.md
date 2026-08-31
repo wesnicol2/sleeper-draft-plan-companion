@@ -83,7 +83,8 @@ resolve an otherwise ambiguous duplicate name/position match.
 
 A Dart Throw candidate does **not** need to exist in `resources/adp.csv`. This is
 important: the feature is specifically intended to retain deep candidates who
-may sit outside canonical ranking coverage.
+may sit outside canonical ranking coverage or outside the Normal-mode display
+horizon.
 
 If a configured candidate cannot be matched to an active current Sleeper player,
 the board should surface the unmatched name instead of silently pretending the
@@ -91,12 +92,14 @@ configuration is complete.
 
 ## 4. Normal board requirement
 
-Normal mode shows every active, undrafted QB/RB/WR/TE known to Sleeper. It is not
-capped at 32 rows. Players without canonical ADP or usable Sleeper `search_rank`
-remain visible in an explicit unranked tail.
+Normal mode shows the next 100 active, undrafted QB/RB/WR/TE players according to
+the normal deterministic ordering. It is a display horizon, not a new ranking
+rule.
 
-This guarantees that Dart Throw configuration and the normal player pool are not
-artificially constrained by a ranking horizon.
+The server keeps the broader ordered available-player pool so Dart Throw matching
+is not constrained by the Normal-mode top 100. This allows a deep configured Dart
+Throw to appear when Dart mode is active even if that player is not visible on
+the normal board.
 
 ## 5. Toggle behavior
 
@@ -118,8 +121,8 @@ When Dart Throw mode is active:
 4. Display those rows in that exact static order.
 5. Add `dart_throw_note` to each displayed card.
 
-Already-drafted candidates are naturally absent because the normal board payload
-contains only available players.
+Already-drafted candidates are naturally absent because the server-provided
+available set contains only available players.
 
 The card itself remains the ordinary player card. Existing enrichments continue
 to apply:
@@ -139,6 +142,10 @@ card information.
 
 Normal board geometry communicates canonical rank order, so Cost-of-waiting
 fallback rails and the horizontal next-pick ADP marker are meaningful there.
+
+The Normal view only shows 100 players. If a projected fallback or next-pick
+boundary falls below that horizon, the UI should describe it as not currently
+shown / beyond shown 100 rather than pretending the canonical range ended there.
 
 Dart Throw mode deliberately reorders the board according to personal static
 preference. Drawing those ADP-based geometric overlays on top of the static Dart
@@ -183,7 +190,9 @@ Automated coverage should establish at least:
 - repository CSV schema and unique order validation;
 - all four positions must be at least `1.00` for eligibility;
 - a position at `0.99` blocks eligibility;
-- Dart matching works for a player outside canonical ADP coverage;
+- Normal mode renders no more than 100 ordered players;
+- Dart matching works for a player outside canonical ADP or the Normal-mode top
+  100;
 - filtered rows use exact configured order, not normal rank;
 - rationale text is rendered;
 - changing drafts/moving below the gate resets Dart mode;
