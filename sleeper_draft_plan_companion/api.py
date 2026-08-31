@@ -8,8 +8,9 @@ import mimetypes
 import time
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs
-from wsgiref.simple_server import make_server
+from wsgiref.simple_server import WSGIRequestHandler, WSGIServer
 
 from . import board as board_module
 from . import config, draft, preferences, sleeper
@@ -172,14 +173,20 @@ def _send(
     return [body]
 
 
+class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
+    daemon_threads = True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the service.")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8000)
     args = parser.parse_args(argv)
-    with make_server(args.host, args.port, application) as httpd:
+    server = _ThreadingWSGIServer((args.host, args.port), WSGIRequestHandler)
+    server.set_app(application)
+    with server:
         print(f"serving on http://{args.host}:{args.port}")
-        httpd.serve_forever()
+        server.serve_forever()
     return 0
 
 
