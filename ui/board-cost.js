@@ -101,6 +101,11 @@
     const marker = (board.future_pick_markers || [])[0];
     if (!marker || !cells.length) return;
 
+    const beyondShownLimit = Boolean(
+      board.normal_board_limit &&
+      marker.before_rank != null &&
+      marker.before_rank > ranked.length
+    );
     let row;
     if (marker.before_rank != null && cells[marker.before_rank - 1]) {
       row = cells[marker.before_rank - 1].style.gridRowStart;
@@ -114,7 +119,9 @@
     markerEl.style.gridRow = row;
     markerEl.style.gridColumn = '1 / -1';
     markerEl.innerHTML = '<span>YOUR NEXT PICK #' + marker.pick_no +
-      (marker.beyond_board ? ' · beyond canonical ADP range' : '') + '</span>';
+      (beyondShownLimit
+        ? ' · beyond shown ' + board.normal_board_limit
+        : (marker.beyond_board ? ' · beyond canonical ADP range' : '')) + '</span>';
     grid.appendChild(markerEl);
   }
 
