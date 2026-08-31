@@ -2,8 +2,9 @@
 
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft automatically, compares the roster with a configured checkpoint plan,
-shows the full available QB/RB/WR/TE pool, and layers explainable decision
-context onto the board without changing the canonical player ranking.
+shows the next 100 available QB/RB/WR/TE players in Normal mode, and layers
+explainable decision context onto the board without changing the canonical
+player ranking.
 
 The application deliberately keeps ranking, roster requirements, Cost of
 waiting, positional strength, contextual signals, personal preferences, and Dart
@@ -83,9 +84,9 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/plan` — active checkpoint plan and its source.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
-- `/board` — full available-player board plus Cost of waiting, positional
-  strength, repository preferences, and Dart Throw metadata. Accepts
-  `?draft_id=` and `?fresh=1`.
+- `/board` — available-player data plus Cost of waiting, positional strength,
+  repository preferences, and Dart Throw metadata. Normal mode renders the first
+  100 ordered players from this payload. Accepts `?draft_id=` and `?fresh=1`.
 - `/rankings` — debugging view showing why the requested ranking slice is ordered
   as it is.
 
@@ -104,12 +105,13 @@ Top to bottom:
 | **Drafted** | The user's roster at that position, including credited market value |
 | *solid line* | Separation between owned and available players |
 | **Needs** | Outstanding checkpoint positional minimums |
-| **Ranked** | Every active, undrafted QB/RB/WR/TE known to Sleeper |
+| **Ranked** | The next 100 active, undrafted QB/RB/WR/TE players |
 
-There is no artificial row cap. Canonical static-ADP matches come first, then
-players using Sleeper `search_rank`, then active tracked players with neither
-usable ranking source in a deterministic name/player-ID tail. An unranked deep
-player is therefore still visible instead of disappearing from the board.
+Normal mode has a fixed 100-player display horizon. Ordering still uses canonical
+static ADP first, then Sleeper `search_rank`, then active tracked players with
+neither usable ranking source in a deterministic name/player-ID tail. The server
+retains the broader available pool so repository-configured Dart Throws can still
+surface even when a deep candidate falls outside the Normal-mode top 100.
 
 Static CSV ADP remains authoritative where available. `/rankings` exposes each
 row's `rank_source` and `rank_value` so ADP, Sleeper fallback, and unranked rows
@@ -163,7 +165,8 @@ Color saturation is weighted rather than just badge-counted. The same-position
 
 Cost of waiting asks a narrow question: if the best currently available player
 at a position is passed, who does static ADP suggest may remain at the user's
-next scheduled pick, and how far down the current full board is that fallback?
+next scheduled pick, and how far down the current Normal-mode board window is
+that fallback?
 
 The deterministic availability rule is:
 
@@ -178,10 +181,11 @@ That is ordinal ADP deterioration, not fantasy-value loss. Checkpoint need stays
 separate and does not alter the number. Missing static ADP remains explicitly
 unavailable rather than silently substituting Sleeper rank.
 
-The horizontal next-pick marker is anchored to canonical ADP rows. Because the
-normal board now shows the full available pool, there is no 32-row horizon; if
-no canonical ADP row reaches the projected pick, the marker is placed after the
-canonical range and labeled accordingly.
+The horizontal next-pick marker is anchored to canonical ADP rows. If the
+projected boundary falls outside the first 100 displayed players, the marker is
+placed after the visible range and labeled `beyond shown 100`. If the canonical
+ADP range itself cannot reach the projected pick, that remains a separate
+`beyond canonical ADP range` case.
 
 ## Positional strength
 
@@ -213,10 +217,11 @@ Dart Throw mode becomes available only when **QB, RB, WR, and TE are each at
 strength `1.00` or higher**. At that point the board header exposes a Normal / Dart
 Throw toggle.
 
-Normal mode remains unchanged. Dart Throw mode:
+Normal mode shows only the next 100 ordered players. Dart Throw mode:
 
 - shows only currently available players configured in
-  `resources/dart-throws.csv`;
+  `resources/dart-throws.csv`, even when a configured candidate is deeper than
+  the Normal-mode 100-player horizon;
 - ignores normal ADP order and uses the CSV's explicit static `order`;
 - keeps each player's ordinary card treatment, including strength, contextual
   signals, stars, and Do Not Draft;
@@ -255,7 +260,7 @@ is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads.
   - `draft.py` — live draft state and snake-pick projection.
   - `adp.py` — static ADP loading and Sleeper-player matching.
   - `plan.py` — checkpoint-plan loading.
-  - `board.py` — full-board assembly, future-pick markers, strength, and decision context.
+  - `board.py` — available-pool assembly, future-pick markers, strength, and decision context.
   - `decision.py` — deterministic Cost of waiting context.
   - `strength.py` — Consensus-ADP positional-strength model.
   - `preferences.py` — repository-backed personal/model/Dart Throw configuration.
