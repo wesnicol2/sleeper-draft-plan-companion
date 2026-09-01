@@ -1,7 +1,9 @@
-"""Static ADP data from resources/adp.csv.
+"""Static ADP data from the uploaded multi-source rankings snapshot.
 
-The CSV's `id` column is the canonical overall rank used to order the board.
-`Consensus` is separately exposed as the valuation input for positional strength.
+Normal board ordering uses the CSV's `Sleeper` column. `AVG` is exposed
+separately as the market-average valuation input used by positional strength and
+the card value signal. The other provider columns are retained for future use
+but do not affect ordering.
 """
 
 from __future__ import annotations
@@ -12,10 +14,25 @@ from pathlib import Path
 from typing import Any
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
-CSV_PATH = Path(__file__).resolve().parent.parent / "resources" / "adp.csv"
+CSV_PATH = Path(__file__).resolve().parent.parent / "resources" / "std_overall_3d_09012026.csv"
+EXPECTED_HEADER = [
+    "Rank",
+    "Player",
+    "POS",
+    "Team",
+    "AVG",
+    "Expert",
+    "Sleeper",
+    "ESPN",
+    "Yahoo",
+    "Underdog",
+    "CBS",
+    "FFPC",
+]
 
 _SUFFIXES = re.compile(r"\b(jr|sr|ii|iii|iv|v)\.?$")
 _PUNCTUATION = re.compile(r"[^a-z0-9 ]")
+_POSITION = re.compile(r"^(QB|RB|WR|TE|K|DEF)")
 _MEMO: list[dict[str, Any]] | None = None
 
 
@@ -26,65 +43,76 @@ def _normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", normalized)
 
 
-def _read_rows() -> list[list[str]]:
-    with CSV_PATH.open(newline="", encoding="utf-8") as handle:
-        raw = list(csv.reader(handle))
-    if not raw:
-        raise ValueError(f"ADP CSV is empty: {CSV_PATH}")
-    rows: list[list[str]] = [raw[0]]
-    for row in raw[1:]:
-        if row and row[0].strip().isdigit():
-            rows.append(row)
-            continue
-        if not rows or len(rows[-1]) < 3 or not row:
-            raise ValueError(f"Malformed ADP CSV row: {row!r}")
-        rows[-1][2] = row[0].strip()
-        rows[-1].extend(row[1:])
-    return rows
+def _base_position(value: str) -> str | None:
+    match = _POSITION.match(value.strip().upper())
+    return match.group(1) if match else None
+
+
+def _number(value: str | None) -> float | None:
+    raw = (value or "").strip()
+    if not raw or raw in {"—", "-", "nan", "NaN"}:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
+def _rank(value: str | None) -> int | None:
+    number = _number(value)
+    if number is None or number <= 0 or not number.is_integer():
+        return None
+    return int(number)
 
 
 def load_adp() -> list[dict[str, Any]]:
     global _MEMO
     if _MEMO is not None:
         return _MEMO
-    rows = _read_rows()
-    expected_header = [
-        "id",
-        "Position",
-        "Player",
-        "Team",
-        "Consensus",
-        "Sleeper",
-        "ESPN",
-        "FantasyPros",
-    ]
-    if rows[0] != expected_header:
-        raise ValueError(f"Unexpected ADP CSV header: {rows[0]!r}")
-    records: list[dict[str, Any]] = []
-    for row in rows[1:]:
-        if len(row) != len(expected_header):
-            raise ValueError(f"Malformed ADP CSV row: {row!r}")
-        try:
-            rank = int(row[0])
-        except ValueError as exc:
-            raise ValueError(f"Invalid ADP rank: {row[0]!r}") from exc
-        position = row[1].strip()
-        player_name = row[2].strip()
-        if position not in TRACKED_POSITIONS or not player_name:
-            continue
-        records.append(
-            {
-                "rank": rank,
-                "position": position,
-                "player_name": player_name,
-                "team": row[3].strip() or None,
-                "consensus": row[4].strip(),
-                "sleeper": row[5].strip(),
-                "espn": row[6].strip(),
-                "fantasypros": row[7].strip(),
-            }
+
+    with CSV_PATH.open(mode="r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames != EXPECTED_HEADER:
+            raise ValueError(f"Unexpected ADP CSV header: {reader.fieldnames!r}")
+        records: list[dict[str, Any]] = []
+        for row in reader:
+            position = _base_position(row.get("POS") or "")
+            player_name = (row.get("Player") or "").strip()
+            if position not in TRACKED_POSITIONS or not player_name:
+                continue
+            average = _number(row.get("AVG"))
+            sleeper_rank = _rank(row.get("Sleeper"))
+            records.append(
+                {
+                    "rank": sleeper_rank,
+                    "source_rank": _rank(row.get("Rank")),
+                    "position": position,
+                    "position_rank": (row.get("POS") or "").strip(),
+                    "player_name": player_name,
+                    "team": (row.get("Team") or "").strip() or None,
+                    "average": average,
+                    # Compatibility name consumed by the strength model.
+                    "consensus": str(average) if average is not None else "",
+                    "sleeper": _number(row.get("Sleeper")),
+                    "expert": _number(row.get("Expert")),
+                    "espn": _number(row.get("ESPN")),
+                    "yahoo": _number(row.get("Yahoo")),
+                    "underdog": _number(row.get("Underdog")),
+                    "cbs": _number(row.get("CBS")),
+                    "ffpc": _number(row.get("FFPC")),
+                }
+            )
+
+    # Sleeper-ranked records first for deterministic inspection. Rows without a
+    # Sleeper rank are still retained so AVG can contribute valuation data.
+    records.sort(
+        key=lambda record: (
+            record["rank"] is None,
+            record["rank"] if record["rank"] is not None else float("inf"),
+            record["average"] if record["average"] is not None else float("inf"),
+            record["player_name"].lower(),
         )
-    records.sort(key=lambda record: record["rank"])
+    )
     _MEMO = records
     return records
 
@@ -120,24 +148,24 @@ def _match_records(
 
 
 def build_adp_index(adp_records: list[dict[str, Any]], players: dict[str, Any]) -> dict[str, int]:
-    """Map Sleeper player IDs to canonical CSV rank for board ordering."""
-    return {
-        player_id: int(record["rank"]) for record, player_id in _match_records(adp_records, players)
-    }
+    """Map Sleeper player IDs to the CSV's Sleeper overall ADP rank."""
+    index: dict[str, int] = {}
+    for record, player_id in _match_records(adp_records, players):
+        rank = record.get("rank")
+        if isinstance(rank, int) and rank > 0:
+            index[player_id] = rank
+    return index
 
 
 def build_consensus_index(
     adp_records: list[dict[str, Any]], players: dict[str, Any]
 ) -> dict[str, float]:
-    """Map Sleeper player IDs to positive Consensus ADP for valuation."""
+    """Map Sleeper player IDs to positive market-average (`AVG`) ADP."""
     index: dict[str, float] = {}
     for record, player_id in _match_records(adp_records, players):
-        try:
-            value = float(record.get("consensus"))
-        except (TypeError, ValueError):
-            continue
-        if value > 0:
-            index[player_id] = value
+        value = record.get("average")
+        if isinstance(value, (int, float)) and value > 0:
+            index[player_id] = float(value)
     return index
 
 

@@ -41,13 +41,15 @@ The service is intentionally small:
 - `api.py` is a stdlib WSGI application and static-file server.
 - `sleeper.py` owns Sleeper HTTP access and player caching.
 - `draft.py` turns picks into roster state and projected snake-draft timing.
-- `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
-  Sleeper player IDs.
+- `adp.py` loads the multi-source snapshot from
+  `resources/std_overall_3d_09012026.csv`, uses its `Sleeper` column as
+  canonical static ADP, exposes `AVG` as market-average valuation, and matches
+  rows to Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
 - `board.py` assembles the available-player pool, turn-aware future-pick markers,
   QB/TE demand, positional strength, and joined ADP/plan context.
 - `decision.py` owns Cost of waiting context.
-- `strength.py` owns the Consensus-ADP positional-strength model.
+- `strength.py` owns the average-ADP positional-strength model.
 - `preferences.py` loads repository-backed player, strength-model, and Dart Throw
   configuration and builds the Dart-only kicker/team-defense pool.
 - `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
@@ -59,6 +61,10 @@ floor is a deterministic presentation derived from two backend facts already in
 the payload: the live needy-drafter count and the full canonical-ADP available
 pool.
 
+The Normal-card ADP value sign is also deliberately presentation-only. The
+backend supplies both canonical Sleeper ADP and market-average `AVG`; the UI
+compares those two values without changing the ordered player pool.
+
 ## Repository-backed personal configuration
 
 Personal recommendation state must be identical across browsers, Test,
@@ -68,15 +74,17 @@ Production, and container recreations for a given deployed commit. Browser
 ### Starred and Do Not Draft
 
 `resources/player-preferences.csv` is authoritative for `starred` and
-`do_not_draft`. Its `id` is the canonical integer rank from `resources/adp.csv`,
-not a Sleeper player ID. `preferences.py` validates each configured id against
-the ADP row's player name and position before applying flags. Team is metadata,
-not identity, because a team change should not transfer or invalidate a player
-preference.
+`do_not_draft`. Its legacy integer `id` is only a file-row identifier. Preference
+identity is normalized **position + player name**, not ADP rank and not Sleeper
+player ID. That distinction matters because refreshing the rankings snapshot can
+change rank numbers without changing which person the preference belongs to.
 
-Only canonical-ADP board rows receive these id-based flags. A `search_rank` row
-must not borrow an ADP preference because its numeric rank happens to match a CSV
-id. A row cannot be both starred and Do Not Draft.
+`preferences.py` validates that configured positions/names are well formed and
+that identities are unique. It deliberately does **not** require every preference
+to appear in the current static rankings snapshot: a player absent from that
+snapshot may still appear through Sleeper `search_rank` or the unranked fallback
+and should retain the configured preference when the identity matches. Team is
+metadata/ambiguity context, not the durable preference key.
 
 Both settings are presentation-only. Starred is a target marker. Do Not Draft is
 a stronger full-red visual block that hides secondary card details. Neither
@@ -102,8 +110,8 @@ not a claim that the application has independently verified the rationale.
 QB/RB/WR/TE/K Dart Throw matching uses normalized name + position, with team as
 an ambiguity resolver. Team defenses are different: Sleeper's display wording is
 not the durable identity, so `DEF` rows require a team abbreviation and match by
-that team code. This intentionally differs from starred/DND because a deep dart
-throw may not exist in the canonical ADP CSV at all.
+that team code. This intentionally differs from normal ranking because a deep
+dart throw may not exist in the static rankings snapshot at all.
 
 Kicker and defense rows are Dart-only. The API builds a small active, undrafted
 K/DEF pool from Sleeper and attaches it separately as `dart_throw_pool`; those
@@ -132,10 +140,17 @@ choice, not a new ranking rule.
 
 Ordering remains explicit and deterministic:
 
-1. canonical `resources/adp.csv` matches, ordered by CSV `id`;
-2. unmatched players with usable Sleeper `search_rank`, ordered by that rank;
+1. matched rows with a usable `Sleeper` value in
+   `resources/std_overall_3d_09012026.csv`, ordered by that Sleeper ADP;
+2. unmatched/no-static-rank players with usable Sleeper player-payload
+   `search_rank`, ordered by that fallback rank;
 3. remaining active tracked players, ordered by normalized display name then
    player ID as an unranked tail.
+
+`AVG`, `Expert`, ESPN, Yahoo, Underdog, CBS, and FFPC never control that ordering.
+They are separate evidence. `AVG` currently feeds positional-strength valuation
+and the Normal-card `+`/`-` indicator; the other provider columns are retained
+for future use.
 
 The broader backend pool is intentional even though Normal mode stops at 100.
 Dart Throw mode may need to surface a repository-configured deep player outside
@@ -153,14 +168,21 @@ fallback summary says it is not currently shown, and the next-pick marker is
 placed after the visible range with a `beyond shown 100` label. A true canonical
 ADP exhaustion remains a separate `beyond canonical ADP range` condition.
 
-## Static ADP and Cost of waiting
+## Static ADP, market-average value, and Cost of waiting
 
-Sleeper's public player payload does not provide the canonical ADP this app
-needs. The CSV integer `id` remains canonical for board ordering where matched.
-`search_rank` is an explicitly labeled fallback only.
+There are now two different ADP concepts in the rankings snapshot and they must
+not be conflated:
 
-Cost of waiting deliberately does **not** use the fallback. Its numeric comparison
-is defined in terms of canonical static ADP:
+- `Sleeper` is the canonical static overall rank for board order, Cost of waiting,
+  next-pick geometry, and the QB/TE guaranteed floor.
+- `AVG` is the market-average valuation input used by positional strength and the
+  Normal-card valuation sign.
+
+Sleeper's public player payload `search_rank` is still only an explicitly labeled
+fallback when the static snapshot has no usable Sleeper rank.
+
+Cost of waiting deliberately does **not** use either market AVG or the fallback.
+Its numeric comparison is defined in terms of canonical static Sleeper ADP:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
@@ -173,6 +195,21 @@ ADP produces unavailable Cost of waiting instead of mixing scales.
 
 The backend may retain two projected picks for future use; the board presents
 the next opportunity to minimize draft-time noise.
+
+### Normal-card average-ADP sign
+
+`ui/board-adp-value.js` compares `consensus_adp` (the snapshot's `AVG`) to `adp`
+(the snapshot's canonical `Sleeper` rank) after the Normal board has rendered:
+
+- `AVG < Sleeper` → `+`: the broader market ranks the player earlier, so the
+  player is undervalued in Sleeper.
+- `AVG > Sleeper` → `-`.
+- equal/missing/non-numeric comparison → no sign.
+
+The sign is explanatory metadata only. It must not alter `payload.ranked`, column
+ordering, Cost of waiting, checkpoint need, or strength. It is hidden in Dart
+Throw mode because the Dart view intentionally replaces normal ADP order with a
+repository-owned static order.
 
 ### Live QB/TE demand is evidence, not probability
 
@@ -238,8 +275,8 @@ on-the-clock pick remains the recommendation anchor.
 
 ## Positional strength
 
-Raw roster count is a poor proxy for roster quality. The current model uses
-Consensus ADP `a` as a market-value input:
+Raw roster count is a poor proxy for roster quality. The current model uses the
+rankings snapshot's market-average `AVG` value `a` as its valuation input:
 
 `V = a^(-alpha)`
 
@@ -351,9 +388,10 @@ In Dart Throw mode:
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
 - the configured rationale is added to each card;
-- Cost-of-waiting rails, the QB/TE guaranteed-floor line, and the horizontal ADP
-  marker are suppressed because their geometry/context assumes the Normal
-  recommendation horizon, which Dart mode intentionally discards;
+- Cost-of-waiting rails, the QB/TE guaranteed-floor line, the Normal ADP value
+  sign, and the horizontal ADP marker are suppressed because their
+  geometry/context assumes the Normal recommendation horizon, which Dart mode
+  intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
   vanishing.
 
@@ -377,19 +415,25 @@ re-rank those rows.
 ### Wrapper modules preserve one render pipeline
 
 Several UI files wrap the global `renderBoard` function to add Cost of waiting,
-strength, contextual signals, Do Not Draft, stars, Dart rationale, and Dart-only
-special teams. Wrapper order matters. Any mode that filters the board must create
-the final board view before `renderBoard` is called so every enhancer sees the
-same player list and cell index mapping. `board-limit.js` wraps
-`boardForCurrentMode` immediately after `script.js`; the later
-`board-dart-special-teams.js` wrapper leaves Normal mode untouched and replaces
-only the active Dart view with the combined configured pool.
+strength, contextual signals, Do Not Draft, stars, average-ADP value signs, Dart
+rationale, and Dart-only special teams. Wrapper order matters. Any mode that
+filters the board must create the final board view before `renderBoard` is called
+so every enhancer sees the same player list and cell index mapping.
+`board-limit.js` wraps `boardForCurrentMode` immediately after `script.js`; the
+later `board-dart-special-teams.js` wrapper leaves Normal mode untouched and
+replaces only the active Dart view with the combined configured pool.
 
 `board-cost.js` is one deliberate exception to using only the sliced render view:
 its guaranteed QB/TE quality floor consults `lastBoardPayload.ranked` so a valid
 canonical floor beyond Normal row 100 is not lost. It may **read** that broader
 pool for the deterministic floor, but it must not use it to re-rank or expand the
 Normal board itself.
+
+`board-adp-value.js` decorates rendered Normal cards only after the underlying
+board is already ordered. Keep this indicator downstream of ranking; a future
+refactor must not accidentally sort on `AVG` because the presence of a `+` or
+`-` is intentionally evidence about a Sleeper-vs-market disagreement, not a new
+canonical ranking.
 
 ### Draft-time controls are deliberately scarce
 
@@ -433,7 +477,16 @@ private home-server Test container has already pulled and been exercised.
 
 ## Repo history worth not relearning
 
-- **Sleeper `search_rank` is not canonical ADP.** It is a visible fallback only.
+- **The rankings snapshot has two intentional ADP roles.** `Sleeper` controls
+  canonical board order; `AVG` is market valuation. Never sort the board on AVG.
+- **`+` means Sleeper undervaluation.** On a Normal card, `AVG < Sleeper` is `+`,
+  `AVG > Sleeper` is `-`, and equal/missing values show nothing. The sign is not
+  a ranking input and is hidden in Dart Throw mode.
+- **Sleeper player-payload `search_rank` is not canonical ADP.** It is a visible
+  fallback only when the static snapshot has no usable Sleeper rank.
+- **Player preferences follow identity, not rank number.** Rankings refreshes may
+  move player ranks or omit a player entirely; Star/DND must stay attached to
+  normalized position + player name and still work on fallback rows.
 - **The Normal board horizon is 100, but Dart Throw matching and the QB/TE
   guaranteed floor need the broader pool.** Keep display limiting separate from
   the backend available-player data.
@@ -456,8 +509,9 @@ private home-server Test container has already pulled and been exercised.
   value or scarcity percentages from Cost of waiting.
 - **Uncalibrated urgency thresholds are worse than raw evidence.** Keep the raw
   evidence in the model until validation supports categories.
-- **Roster counts are not roster strength.** Current strength uses Consensus ADP,
-  league-relative targets, FLEX allocation, and diminishing bench-depth credit.
+- **Roster counts are not roster strength.** Current strength uses market-average
+  `AVG`, league-relative targets, FLEX allocation, and diminishing bench-depth
+  credit.
 - **Browser-local recommendation settings create environment drift.** Stars,
   Do Not Draft, strength parameters, and Dart Throw candidates belong in the
   repository when cross-environment consistency is the goal.

@@ -13,10 +13,10 @@ def _skip_validation(_records) -> None:
     return None
 
 
-def _preference(starred=False, do_not_draft=False):
+def _preference(player="Player", position="RB", starred=False, do_not_draft=False):
     return {
-        "position": "RB",
-        "player": "Player",
+        "position": position,
+        "player": player,
         "team": "AAA",
         "starred": starred,
         "do_not_draft": do_not_draft,
@@ -104,34 +104,33 @@ def test_dart_throws_require_unique_order_and_reason(tmp_path: Path):
         preferences.load_dart_throws(path)
 
 
-def test_apply_preferences_to_adp_rows(monkeypatch):
-    validator = "_validate_player_preferences"
-    monkeypatch.setattr(preferences, validator, _skip_validation)
+def test_apply_preferences_follows_player_identity_not_rank(monkeypatch):
+    monkeypatch.setattr(preferences, "_validate_player_preferences", _skip_validation)
     records = {
-        10: _preference(starred=True),
-        20: _preference(do_not_draft=True),
+        10: _preference(player="Target Back", position="RB", starred=True),
+        20: _preference(player="Avoid Wideout", position="WR", do_not_draft=True),
     }
     payload = {
         "ranked": [
             {
                 "rank_source": "adp",
-                "rank_value": 10,
-                "name": "Player",
+                "rank_value": 99,
+                "name": "Target Back",
                 "position": "RB",
                 "team": "AAA",
             },
             {
                 "rank_source": "adp",
-                "rank_value": 20,
-                "name": "Other",
-                "position": "WR",
+                "rank_value": 10,
+                "name": "Different Player At Old Rank",
+                "position": "RB",
                 "team": "BBB",
             },
             {
                 "rank_source": "search_rank",
-                "rank_value": 10,
-                "name": "Fallback",
-                "position": "QB",
+                "rank_value": 500,
+                "name": "Avoid Wideout",
+                "position": "WR",
                 "team": "CCC",
             },
         ],
@@ -143,9 +142,10 @@ def test_apply_preferences_to_adp_rows(monkeypatch):
     assert payload["ranked"][0]["starred"] is True
     assert payload["ranked"][0]["do_not_draft"] is False
     assert payload["ranked"][1]["starred"] is False
-    assert payload["ranked"][1]["do_not_draft"] is True
+    assert payload["ranked"][1]["do_not_draft"] is False
     assert payload["ranked"][2]["starred"] is False
-    assert payload["ranked"][2]["do_not_draft"] is False
+    assert payload["ranked"][2]["do_not_draft"] is True
+    assert payload["personal_preferences"]["match_key"] == "position + normalized player name"
     assert payload["personal_preferences"]["mutable_in_ui"] is False
 
 
