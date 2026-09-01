@@ -7,9 +7,10 @@ explainable decision context onto the board without changing the canonical
 player ranking.
 
 The application deliberately keeps ranking, roster requirements, Cost of
-waiting, positional strength, contextual signals, personal preferences, and Dart
-Throw mode as separate facts. That makes the board inspectable when one signal
-looks wrong instead of hiding every opinion inside one master score.
+waiting, positional strength, live QB/TE demand, contextual signals, personal
+preferences, and Dart Throw mode as separate facts. That makes the board
+inspectable when one signal looks wrong instead of hiding every opinion inside
+one master score.
 
 ## Run it
 
@@ -86,8 +87,9 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
 - `/board` — available-player data plus Cost of waiting, positional strength,
-  repository preferences, and Dart Throw metadata. Normal mode renders the first
-  100 ordered players from this payload. Accepts `?draft_id=` and `?fresh=1`.
+  live QB/TE next-pick demand, repository preferences, and Dart Throw metadata.
+  Normal mode renders the first 100 ordered players from this payload. Accepts
+  `?draft_id=` and `?fresh=1`.
 - `/rankings` — debugging view showing why the requested ranking slice is ordered
   as it is.
 
@@ -185,6 +187,36 @@ That is ordinal ADP deterioration, not fantasy-value loss. Checkpoint need stays
 separate and does not alter the number. Missing static ADP remains explicitly
 unavailable rather than silently substituting Sleeper rank.
 
+### QB and TE live demand
+
+The best available QB and TE cards add a separate live-demand line such as:
+
+`QB RISK · 3 of 8 drafters before your next pick have no QB`
+
+The denominator is the number of **unique opposing draft slots** that still have
+at least one unmade selection before the user's next relevant pick. An opponent
+counts once even if the snake gives that drafter two selections in the window.
+The numerator is how many of those opponents have not drafted that position yet.
+The TE line uses the identical rule for tight end ownership.
+
+This is possible-buyer context, not a probability. A drafter who already has a
+QB is not counted as QB risk, even though that drafter could choose a backup; the
+same rule applies to TE. The number updates as picks are made and does not change
+rank, ADP loss, strength, or card color.
+
+### Back-to-back turn picks
+
+When the user owns two consecutive snake picks at the first or last draft slot,
+and the current selection is the **first** of that pair, recommendation math
+acts as though the user is already on the second pick. The immediate second pick
+is controlled by the user, so calling the same player a likely next-pick fallback
+would be meaningless.
+
+The actual Sleeper on-the-clock state is preserved for the Draft panel. Only the
+recommendation horizon moves to the second turn pick; Cost of waiting, the
+next-pick marker, and QB/TE demand then project to the user's next opportunity
+after the pair.
+
 The horizontal next-pick marker is anchored to canonical ADP rows. If the
 projected boundary falls outside the first 100 displayed players, the marker is
 placed after the visible range and labeled `beyond shown 100`. If the canonical
@@ -238,9 +270,9 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
 - matches team defenses by team abbreviation so display-name wording does not
   determine identity;
 - reports configured names that could not be matched so a stale list is visible;
-- suppresses Cost-of-waiting rails and the ADP next-pick marker while the static
-  Dart Throw order is displayed, because those geometric overlays only make
-  sense on canonical board order.
+- suppresses Cost-of-waiting rails, QB/TE live-demand lines, and the ADP next-pick
+  marker while the static Dart Throw order is displayed, because those overlays
+  only make sense on the Normal recommendation horizon.
 
 The rationale text is deliberately personal scouting context, not an assertion
 that the underlying news/injury premise has been independently verified by the
@@ -270,7 +302,7 @@ is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads.
   - `draft.py` — live draft state and snake-pick projection.
   - `adp.py` — static ADP loading and Sleeper-player matching.
   - `plan.py` — checkpoint-plan loading.
-  - `board.py` — available-pool assembly, future-pick markers, strength, and decision context.
+  - `board.py` — available-pool assembly, turn-aware future-pick markers, QB/TE demand, strength, and decision context.
   - `decision.py` — deterministic Cost of waiting context.
   - `strength.py` — Consensus-ADP positional-strength model.
   - `preferences.py` — repository-backed personal/model/Dart Throw configuration and Dart-only K/DEF pool matching.
