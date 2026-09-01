@@ -3,6 +3,10 @@
 }
 
 .dart-toggle.active {
+  text-decoration: underline;
+}
+
+.dart-toggle.ready {
   font-weight: 800;
 }
 

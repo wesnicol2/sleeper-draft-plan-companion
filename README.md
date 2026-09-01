@@ -3,8 +3,8 @@
 A second-screen companion for a live Sleeper fantasy football draft. It follows
 the draft automatically, compares the roster with a configured checkpoint plan,
 shows the next 100 available QB/RB/WR/TE players in Normal mode, and layers
-explainable decision context onto the board without changing the canonical
-player ranking.
+explainable decision context onto the board without changing the backend's
+canonical Sleeper ranking.
 
 The application deliberately keeps ranking, roster requirements, Cost of
 waiting, positional strength, live QB/TE demand and guaranteed floors,
@@ -45,7 +45,10 @@ port 8083) with separate data volumes. Promotion rules are in
 
 The repository also contains authoritative draft preferences:
 
-- `resources/adp.csv` — canonical board order plus Consensus ADP valuation data.
+- `resources/std_overall_3d_09012026.csv` — multi-source rankings snapshot. Its
+  `Sleeper` column is canonical board ADP; `AVG` is the market-average valuation
+  input used by positional strength, the Normal-card value gap, and the optional
+  Average board sort.
 - `resources/player-preferences.csv` — starred and Do Not Draft flags.
 - `resources/general-preferences.csv` — positional-strength `alpha` and `beta_*`
   values.
@@ -110,23 +113,50 @@ Top to bottom:
 | **Needs** | Outstanding checkpoint positional minimums |
 | **Ranked** | The next 100 active, undrafted QB/RB/WR/TE players |
 
-Normal mode has a fixed 100-player display horizon. Ordering still uses canonical
-static ADP first, then Sleeper `search_rank`, then active tracked players with
-neither usable ranking source in a deterministic name/player-ID tail. The server
-retains the broader available pool so repository-configured Dart Throws can still
-surface even when a deep candidate falls outside the Normal-mode top 100.
+Normal mode has a fixed 100-player display horizon and a browser-side
+**Sleeper / Average** sort switch. Sleeper is the default and preserves the
+backend canonical order: static Sleeper ADP first, then Sleeper `search_rank`,
+then active tracked players with neither usable ranking source in a deterministic
+name/player-ID tail. Average sort is instantaneous and reorders a copy of the
+same full available pool by `AVG` before the 100-player display limit is applied;
+players without usable AVG sort after players with AVG, using Sleeper order as
+the fallback tie-break. Switching views never makes a new server request and
+does not mutate the backend canonical ranking.
 
-Static CSV ADP remains authoritative where available. `/rankings` exposes each
-row's `rank_source` and `rank_value` so ADP, Sleeper fallback, and unranked rows
-remain distinguishable.
+The rankings snapshot's `Sleeper` column remains authoritative for Cost of
+waiting, next-pick geometry, and the QB/TE guaranteed floor. `AVG` can reorder
+the Normal display when selected, but `Expert`, ESPN, Yahoo, Underdog, CBS, and
+FFPC do **not** reorder the board. `/rankings` exposes each row's `rank_source`
+and `rank_value` so static Sleeper ADP, Sleeper player-payload fallback, and
+unranked rows remain distinguishable.
+
+### Average-ADP value sign
+
+Normal-mode cards may show one small signed valuation gap beside the player
+metadata. It compares the rankings snapshot's market-average `AVG` with that same
+player's canonical `Sleeper` ADP without changing recommendation math:
+
+- `+N` when `AVG < Sleeper`: the broader market ranks the player `N` spots
+  earlier, so the player is **undervalued in Sleeper**.
+- `-N` when `AVG > Sleeper`: the broader market ranks the player `N` spots later.
+- no badge when the values are equal or either comparison value is unavailable.
+
+The magnitude is `|Sleeper - AVG|`, shown to one decimal place only when needed.
+The sign remains visible in either Normal sort and is hidden in Dart Throw mode,
+even when the Dart list itself is AVG-sorted; Dart cards stay focused on the
+configured candidate list rather than repeating the Normal valuation badge.
 
 ### Starred and Do Not Draft
 
 `resources/player-preferences.csv` is read-only application configuration.
 Starred is a presentation-only target marker. Do Not Draft is a presentation-only
-hard red treatment that hides secondary card information. Neither changes rank,
-Cost of waiting, strength, or checkpoint need, and neither has an in-browser
-mutation path.
+hard red treatment that hides secondary card information. Preferences match by
+normalized player identity (position + player name), not by a ranking row number,
+so refreshing the rankings snapshot cannot silently transfer a flag to a
+different player. A preference may remain valid even when that player is absent
+from the current static rankings snapshot and appears only through Sleeper's
+fallback pool. Neither setting changes rank, Cost of waiting, strength, or
+checkpoint need, and neither has an in-browser mutation path.
 
 ## Contextual player signals
 
@@ -170,22 +200,24 @@ the current contextual model was designed for QB/RB/WR/TE relationships.
 ## Cost of waiting
 
 Cost of waiting asks a narrow question: if the best currently available player
-at a position is passed, who does static ADP suggest may remain at the user's
-next scheduled pick, and how far down the current Normal-mode board window is
-that fallback?
+at a position is passed, who does static Sleeper ADP suggest may remain at the
+user's next scheduled pick, and how far away is that fallback in the currently
+displayed Normal-board order?
 
 The deterministic availability rule is:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
 For each position the board marks the best current static-ADP player, the next
-projected fallback, the fallback's board distance, and:
+projected fallback, the fallback's current visual row distance, and:
 
 `ADP loss if waiting = fallback ADP rank - candidate ADP rank`
 
-That is ordinal ADP deterioration, not fantasy-value loss. Checkpoint need stays
-separate and does not alter the number. Missing static ADP remains explicitly
-unavailable rather than silently substituting Sleeper rank.
+The `ADP +N` number remains canonical Sleeper-ADP deterioration in both Normal
+sorts. Only the displayed up/down row distance follows the active Sleeper or AVG
+view. Checkpoint need stays separate and does not alter the number. Missing
+static ADP remains explicitly unavailable rather than silently substituting
+Sleeper player-payload rank.
 
 ### QB and TE live demand
 
@@ -225,16 +257,18 @@ recommendation horizon moves to the second turn pick; Cost of waiting, the
 next-pick marker, QB/TE demand, and the guaranteed QB/TE floor then project to the
 user's next opportunity after the pair.
 
-The horizontal next-pick marker is anchored to canonical ADP rows. If the
-projected boundary falls outside the first 100 displayed players, the marker is
-placed after the visible range and labeled `beyond shown 100`. If the canonical
-ADP range itself cannot reach the projected pick, that remains a separate
-`beyond canonical ADP range` case.
+The horizontal next-pick marker is anchored to canonical Sleeper ADP rows. It is
+shown in Sleeper sort, where that geometry is meaningful, and suppressed in
+Average sort rather than drawing the canonical boundary on the wrong row. If the
+projected boundary falls outside the first 100 Sleeper-sorted players, the marker
+is placed after the visible range and labeled `beyond shown 100`. If the
+canonical ADP range itself cannot reach the projected pick, that remains a
+separate `beyond canonical ADP range` case.
 
 ## Positional strength
 
-Positional strength uses Consensus ADP as a market-value input. For positive
-Consensus ADP `a`:
+Positional strength uses the rankings snapshot's market-average `AVG` as its
+market-value input. For positive average ADP `a`:
 
 `V = a^(-alpha)`
 
@@ -257,9 +291,10 @@ mathematical specification.
 
 ## Dart Throw mode
 
-Dart Throw mode becomes available only when **QB, RB, WR, and TE are each at
-strength `1.00` or higher**. Kicker and defense do not participate in the unlock
-gate. At that point the board header exposes a Normal / Dart Throw toggle.
+Dart Throw mode is **always visible and clickable**. The QB/RB/WR/TE `1.00`
+strength threshold no longer unlocks the mode; it is a readiness signal only.
+Once all four positions are at or above `1.00`, the Dart Throw button becomes
+bold. Kicker and defense do not participate in that readiness calculation.
 
 Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode:
 
@@ -268,7 +303,10 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
   the Normal-mode 100-player horizon;
 - supports QB/RB/WR/TE plus Dart-only `K` and `DEF` candidates; K/DEF columns are
   added only while Dart Throw mode is active;
-- ignores normal ADP order and uses the CSV's explicit static `order`;
+- honors the same Sleeper / Average switch with Dart-specific semantics: Sleeper
+  uses the CSV's explicit custom `order`, while Average sorts Dart candidates
+  with usable `AVG` by market-average ADP; AVG-less entries such as K/DEF follow
+  afterward in their custom relative order;
 - keeps ordinary card treatment where the corresponding model exists; K/DEF
   cards intentionally have no positional-strength, Cost-of-waiting, or contextual
   signal calculation;
@@ -278,9 +316,9 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
 - matches team defenses by team abbreviation so display-name wording does not
   determine identity;
 - reports configured names that could not be matched so a stale list is visible;
-- suppresses Cost-of-waiting rails, the QB/TE guaranteed-floor line, and the ADP
-  next-pick marker while the static Dart Throw order is displayed, because those
-  overlays only make sense on the Normal recommendation horizon.
+- suppresses Cost-of-waiting rails, the QB/TE guaranteed-floor line, the Normal
+  ADP value sign, and the ADP next-pick marker throughout Dart Throw mode, because
+  those overlays only make sense on the Normal recommendation horizon.
 
 The rationale text is deliberately personal scouting context, not an assertion
 that the underlying news/injury premise has been independently verified by the
@@ -294,13 +332,15 @@ packaged `sleeper_draft_plan_companion/draft_plan.json` is the default; a
 `draft_plan.json` in the mounted data directory overrides it. Minimums are
 cumulative roster totals by the end of a checkpoint. Kicker and defense remain
 outside the Normal board and checkpoint/strength models, but configured K/DEF
-candidates can appear in Dart Throw mode after the core strength gate is met.
+candidates can appear whenever the user opens Dart Throw mode.
 
 ## Refresh behavior
 
 The board polls every 2 seconds during an active draft and less often otherwise.
 The server keeps a short live-draft cache to avoid request bursts. Manual Refresh
-is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads.
+is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads. The
+Sleeper/Average board switch and Normal/Dart Throw view switch re-render the last
+board payload immediately and do not wait for a poll.
 
 ## Project structure
 
@@ -308,17 +348,21 @@ is an escape hatch and sends `?fresh=1` to bypass live-draft cache reads.
   - `api.py` — stdlib WSGI entrypoint.
   - `sleeper.py` — Sleeper client/cache.
   - `draft.py` — live draft state and snake-pick projection.
-  - `adp.py` — static ADP loading and Sleeper-player matching.
+  - `adp.py` — multi-source rankings loading and Sleeper-player matching; the
+    snapshot's `Sleeper` column is canonical order and `AVG` is valuation data.
   - `plan.py` — checkpoint-plan loading.
   - `board.py` — available-pool assembly, turn-aware future-pick markers, QB/TE demand, strength, and decision context.
   - `decision.py` — deterministic Cost of waiting context.
-  - `strength.py` — Consensus-ADP positional-strength model.
+  - `strength.py` — average-ADP positional-strength model.
   - `preferences.py` — repository-backed personal/model/Dart Throw configuration and Dart-only K/DEF pool matching.
-- `resources/adp.csv` — canonical static ADP input.
+- `resources/std_overall_3d_09012026.csv` — multi-source rankings snapshot; `Sleeper`
+  supplies canonical order and `AVG` supplies market-average valuation.
 - `resources/player-preferences.csv` — starred / Do Not Draft source.
 - `resources/general-preferences.csv` — strength-model parameters.
 - `resources/dart-throws.csv` — static Dart Throw order and rationale.
-- `ui/` — plain HTML/CSS/vanilla JS; no build step.
+- `ui/` — plain HTML/CSS/vanilla JS; `board-sort.js` owns the instant sort switch
+  shared by Normal and Dart views and turns the Dart strength threshold into
+  presentation-only readiness.
 - `tests/` — unit and UI-contract tests.
 - `docs/` — human-owned long-form planning/specification documents.
 

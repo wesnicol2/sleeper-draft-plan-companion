@@ -42,10 +42,14 @@ def _normalize_name(name: str) -> str:
     return re.sub(r"\s+", " ", normalized)
 
 
+def _preference_key(position: str, player: str) -> tuple[str, str]:
+    return position, _normalize_name(player)
+
+
 def load_player_preferences(
     path: Path | None = None,
 ) -> dict[int, dict[str, Any]]:
-    """Load player flags keyed by the canonical rank id from resources/adp.csv."""
+    """Load player flags; legacy integer ids are file-row identifiers only."""
     source = path or PLAYER_PREFERENCES_PATH
     with source.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
@@ -54,18 +58,18 @@ def load_player_preferences(
         records: dict[int, dict[str, Any]] = {}
         for row in reader:
             try:
-                rank = int((row.get("id") or "").strip())
+                record_id = int((row.get("id") or "").strip())
             except ValueError as exc:
                 raise ValueError(f"Invalid player preference id: {row.get('id')!r}") from exc
-            if rank in records:
-                raise ValueError(f"Duplicate player preference id: {rank}")
+            if record_id in records:
+                raise ValueError(f"Duplicate player preference id: {record_id}")
             starred = _flag(row.get("starred") or "")
             do_not_draft = _flag(row.get("do_not_draft") or "")
             if starred and do_not_draft:
                 raise ValueError(
-                    f"Player preference id {rank} cannot be both starred and do_not_draft"
+                    f"Player preference id {record_id} cannot be both starred and do_not_draft"
                 )
-            records[rank] = {
+            records[record_id] = {
                 "position": (row.get("Position") or "").strip(),
                 "player": (row.get("Player") or "").strip(),
                 "team": (row.get("Team") or "").strip() or None,
@@ -76,20 +80,21 @@ def load_player_preferences(
 
 
 def _validate_player_preferences(records: dict[int, dict[str, Any]]) -> None:
-    canonical = {record["rank"]: record for record in adp.load_adp()}
-    for rank, preference in records.items():
-        record = canonical.get(rank)
-        if record is None:
-            raise ValueError(f"Player preference id {rank} is not present in resources/adp.csv")
-        if (
-            preference["position"] != record["position"]
-            or preference["player"] != record["player_name"]
-        ):
+    """Ensure preference identities are well-formed and unique across ranking refreshes."""
+    seen: set[tuple[str, str]] = set()
+    for record_id, preference in records.items():
+        position = preference["position"]
+        player = preference["player"]
+        if position not in TRACKED_POSITIONS:
             raise ValueError(
-                "Player preference id "
-                f"{rank} does not match resources/adp.csv: "
-                f"{preference['position']} {preference['player']}"
+                f"Player preference id {record_id} has unsupported position: {position!r}"
             )
+        if not player:
+            raise ValueError(f"Player preference id {record_id} is missing a player name")
+        key = _preference_key(position, player)
+        if key in seen:
+            raise ValueError(f"Duplicate player preference identity: {position} {player}")
+        seen.add(key)
 
 
 def load_dart_throws(path: Path | None = None) -> list[dict[str, Any]]:
@@ -230,12 +235,16 @@ def apply_player_preferences(
     records: dict[int, dict[str, Any]] | None = None,
     dart_throws: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Attach read-only repository preferences to board entries."""
+    """Attach read-only repository preferences to board entries by player identity."""
     records = records if records is not None else load_player_preferences()
     _validate_player_preferences(records)
+    by_identity = {
+        _preference_key(preference["position"], preference["player"]): preference
+        for preference in records.values()
+    }
     for entry in payload.get("ranked") or []:
-        rank = entry.get("rank_value") if entry.get("rank_source") == "adp" else None
-        preference = records.get(rank) if isinstance(rank, int) else None
+        key = _preference_key(str(entry.get("position") or ""), str(entry.get("name") or ""))
+        preference = by_identity.get(key)
         entry["starred"] = bool(preference and preference["starred"])
         entry["do_not_draft"] = bool(preference and preference["do_not_draft"])
 
@@ -244,6 +253,7 @@ def apply_player_preferences(
     payload["personal_preferences"] = {
         "source": "resources/player-preferences.csv",
         "general_source": "resources/general-preferences.csv",
+        "match_key": "position + normalized player name",
         "mutable_in_ui": False,
     }
     payload["dart_throw_mode"] = {

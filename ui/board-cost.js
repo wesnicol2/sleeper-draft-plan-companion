@@ -6,15 +6,19 @@
     return 'ADP +' + cost.adp_loss_if_waiting;
   }
 
+  function distanceText(distance) {
+    if (distance == null) return 'not currently shown';
+    if (distance === 0) return 'same player';
+    return distance > 0 ? '↓' + distance + ' spots' : '↑' + Math.abs(distance) + ' spots';
+  }
+
   function fallbackSummary(player, cost, rankById) {
     if (!cost || !cost.fallback) return 'NEXT → no projected fallback';
     const fallback = cost.fallback;
     const fallbackRank = rankById.get(fallback.player_id);
-    const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
-    const distanceText = distance == null
-      ? 'not currently shown'
-      : (distance === 0 ? 'same player' : '↓' + distance + ' spots');
-    return 'NEXT → ' + fallback.name + ' · ' + distanceText + ' · ' + costText(cost);
+    const playerRank = rankById.get(player.player_id);
+    const distance = fallbackRank == null || playerRank == null ? null : fallbackRank - playerRank;
+    return 'NEXT → ' + fallback.name + ' · ' + distanceText(distance) + ' · ' + costText(cost);
   }
 
   function canonicalPositionPool(position, board) {
@@ -59,11 +63,12 @@
     const checkpoint = board.checkpoint;
 
     const isDartThrow = Boolean(board.dart_throw_active);
+    const sortLabel = board.normal_sort_source === 'average' ? 'AVG sort · ' : '';
     metaLabel.textContent = isDartThrow
       ? 'DART THROW mode · ' + ranked.length + ' available'
-      : (checkpoint ? checkpoint.name + ' · ' : '') + ranked.length + ' available players';
+      : sortLabel + (checkpoint ? checkpoint.name + ' · ' : '') + ranked.length + ' available players';
 
-    const rankById = new Map(ranked.map((player) => [player.player_id, player.rank]));
+    const rankById = new Map(ranked.map((player, index) => [player.player_id, index + 1]));
     const cellById = new Map();
     ranked.forEach((player, index) => {
       if (cells[index]) cellById.set(player.player_id, cells[index]);
@@ -90,7 +95,8 @@
         if (cost.fallback) {
           const fallbackId = cost.fallback.player_id;
           const fallbackRank = rankById.get(fallbackId);
-          const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
+          const playerRank = rankById.get(player.player_id);
+          const distance = fallbackRank == null || playerRank == null ? null : fallbackRank - playerRank;
           if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
           fallbackTargets.get(fallbackId).push({
             position: player.position,
@@ -122,7 +128,9 @@
       targets.forEach((target) => {
         const badge = document.createElement('span');
         badge.className = 'board-fallback-badge';
-        const distance = target.distance == null ? 'off board' : '↓' + target.distance;
+        const distance = target.distance == null
+          ? 'off board'
+          : (target.distance > 0 ? '↓' + target.distance : (target.distance < 0 ? '↑' + Math.abs(target.distance) : 'same'));
         badge.textContent = target.position + ' NEXT · ' + distance;
         cell.appendChild(badge);
       });
