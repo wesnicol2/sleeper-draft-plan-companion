@@ -1,0 +1,44 @@
+.board-sort-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: auto;
+  padding: 0.15rem;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+}
+
+.board-sort-toggle .sort-label {
+  padding: 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.board-sort-toggle button {
+  border: 0;
+  border-radius: 6px;
+  padding: 0.25rem 0.55rem;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.board-sort-toggle button.active {
+  background: var(--edge);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.board .dart-toggle,
+.board button.refresh {
+  margin-left: 0;
+}
+
+@media (max-width: 760px) {
+  .board .cardhead { flex-wrap: wrap; }
+  .board-sort-toggle { margin-left: 0; }
+}
