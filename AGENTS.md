@@ -29,10 +29,10 @@ as a second screen and updates automatically. Draft-time interaction is treated
 as a cost: useful state should already be visible when the user looks at it.
 
 The checkpoint plan remains authoritative for its own positional minimums.
-Ranking, checkpoint need, Cost of waiting, positional strength, contextual
-signals, personal preferences, and Dart Throw status are intentionally separate
-facts. A new model should not quietly redefine an older one just because both
-appear on the same card.
+Ranking, checkpoint need, Cost of waiting, positional strength, live QB/TE demand
+and guaranteed floors, contextual signals, personal preferences, and Dart Throw
+status are intentionally separate facts. A new model should not quietly redefine
+an older one just because both appear on the same card.
 
 ## Current architecture
 
@@ -44,17 +44,20 @@ The service is intentionally small:
 - `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
   Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
-- `board.py` assembles the available-player pool, future-pick markers,
-  positional strength, and joined ADP/plan context.
+- `board.py` assembles the available-player pool, turn-aware future-pick markers,
+  QB/TE demand, positional strength, and joined ADP/plan context.
 - `decision.py` owns Cost of waiting context.
 - `strength.py` owns the Consensus-ADP positional-strength model.
 - `preferences.py` loads repository-backed player, strength-model, and Dart Throw
-  configuration.
+  configuration and builds the Dart-only kicker/team-defense pool.
 - `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
 
 The backend owns ranking and recommendation data. JavaScript may change how a
 server-produced fact is displayed, but it must not invent a competing canonical
-ranking or silently mutate repository-owned preferences.
+ranking or silently mutate repository-owned preferences. The QB/TE guaranteed
+floor is a deterministic presentation derived from two backend facts already in
+the payload: the live needy-drafter count and the full canonical-ADP available
+pool.
 
 ## Repository-backed personal configuration
 
@@ -96,10 +99,15 @@ Each row owns an explicit static order, position, player name, optional team
 metadata, and a human-written rationale. This list is personal scouting context,
 not a claim that the application has independently verified the rationale.
 
-Dart Throw matching uses normalized name + position. Team is used only to resolve
-an otherwise ambiguous duplicate. This intentionally differs from starred/DND:
-a deep dart throw may not exist in the canonical ADP CSV at all, so tying the
-list to ADP ids would make exactly the deepest candidates disappear.
+QB/RB/WR/TE/K Dart Throw matching uses normalized name + position, with team as
+an ambiguity resolver. Team defenses are different: Sleeper's display wording is
+not the durable identity, so `DEF` rows require a team abbreviation and match by
+that team code. This intentionally differs from starred/DND because a deep dart
+throw may not exist in the canonical ADP CSV at all.
+
+Kicker and defense rows are Dart-only. The API builds a small active, undrafted
+K/DEF pool from Sleeper and attaches it separately as `dart_throw_pool`; those
+rows never enter the normal canonical ranking or the 100-player Normal horizon.
 
 ## The draft plan is configuration, not code
 
@@ -112,9 +120,9 @@ loader falls back to the packaged plan and surfaces the override error. Tests
 should validate plan mechanics and schema, not assert the author's current
 strategy choices.
 
-Defense and kicker remain outside the board. Their selection logic requires
-inputs that the current Sleeper path does not supply, so adding them is not just
-adding two columns.
+Kicker and defense remain outside the Normal board, checkpoint plan, Cost of
+waiting, and positional-strength models. They may appear only as explicitly
+configured Dart Throw candidates after the core QB/RB/WR/TE strength gate is met.
 
 ## Available-pool ordering and the 100-player Normal horizon
 
@@ -131,9 +139,14 @@ Ordering remains explicit and deterministic:
 
 The broader backend pool is intentional even though Normal mode stops at 100.
 Dart Throw mode may need to surface a repository-configured deep player outside
-that horizon, so capping `payload.ranked` itself would make Dart Throw behavior
+that horizon, and the QB/TE guaranteed floor may also land below the visible
+window. Capping `payload.ranked` itself would therefore make both behaviors
 depend on normal-board visibility. `rank_source` and `rank_value` keep the full
 ordering inspectable while `ui/board-limit.js` owns the Normal-mode slice.
+
+The separate Dart-only K/DEF pool does not participate in this ordering at all.
+Those positions have no canonical place in Normal mode and are joined only after
+Dart Throw mode is active.
 
 Cost-of-waiting fallbacks may also land outside the visible 100. In that case the
 fallback summary says it is not currently shown, and the next-pick marker is
@@ -160,6 +173,68 @@ ADP produces unavailable Cost of waiting instead of mixing scales.
 
 The backend may retain two projected picks for future use; the board presents
 the next opportunity to minimize draft-time noise.
+
+### Live QB/TE demand is evidence, not probability
+
+QB and TE receive one extra piece of next-pick evidence. For the user's next
+relevant selection, `board.py` enumerates every still-unmade pick before that
+selection, converts those picks to draft slots with the existing snake math,
+excludes the user's own slot, and deduplicates opponents.
+
+For each of QB and TE the backend reports:
+
+- number of unique opposing drafters who still select before the user's next pick;
+- how many of those drafters have not yet selected that position;
+- the corresponding slot IDs for debugging/tests.
+
+An opponent counts once even if the snake gives that drafter two picks in the
+window. A drafter who already has a QB is excluded from QB demand even though a
+backup QB remains possible; TE follows the same rule. This is intentionally a
+possible-buyer count, not a calibrated probability or urgency score. Do not turn
+`3 of 8 without QB` into `37.5% chance the player disappears` without evidence.
+
+The raw demand count remains in the backend as an input to the deterministic
+floor but is intentionally not rendered on the card. It does not alter rank, ADP
+loss, strength, or card color.
+
+### The QB/TE guaranteed floor is a pigeonhole bound
+
+The same needy-drafter count supports a stronger deterministic statement without
+pretending to know which player any opponent will choose. If `X` opponents ahead
+lack QB and each drafts exactly one QB, at most `X` of the currently available
+top `X + 1` QBs can be removed. Therefore at least one player from that set must
+remain.
+
+The UI sorts the **full available canonical-ADP pool** for the position and uses
+zero-based `pool[X]`, the `(X + 1)`th player, as the displayed floor. The card
+shows only:
+
+`GUARANTEED QB: <player>`
+
+The displayed name represents the deterministic ADP-quality floor; the UI does
+not spell out the assumption or append explanatory copy. TE uses the identical
+argument.
+
+Do not use `search_rank` or the unranked tail for this line. If the canonical pool
+is too short to establish the floor, omit the guarantee instead of mixing ranking
+scales. The calculation deliberately consults the unsliced backend payload even
+when Normal mode renders only 100 rows.
+
+### Back-to-back turn picks use the second pick as recommendation anchor
+
+At slot 1 or the last slot, the user can own two consecutive picks across a snake
+round boundary. When the current pick is the **first** of that pair, using the
+immediate second pick as the Cost-of-waiting horizon produces nonsense such as
+`same player` being the projected fallback when nobody else can draft in between.
+
+`board.py` therefore advances only the **recommendation anchor** to the second
+pick of the pair, then projects future picks from there. The real Sleeper
+`on_the_clock` value is not rewritten; the Draft panel can still show the actual
+first selection. Cost of waiting, the next-pick marker, picks-until-next, QB/TE
+demand, and the guaranteed floor all use the turn-aware recommendation horizon.
+
+When the user is already on the second pick, or is not at a turn slot, the actual
+on-the-clock pick remains the recommendation anchor.
 
 ## Positional strength
 
@@ -201,6 +276,10 @@ mode displays only 100, candidate calculation must reuse the already-built leagu
 target rather than rebuild the league-wide market target from scratch for each
 player. Recompute roster contribution; do not recompute an unchanged denominator.
 
+Kicker and defense do not receive hypothetical strength values. Their Dart Throw
+rows intentionally carry no `strength_if_drafted` because the current strength
+model has no K/DEF target definition.
+
 Checkpoint `still_needed` remains count-based. Column order uses checkpoint need
 first, then lower positional strength.
 
@@ -240,6 +319,10 @@ the guaranteed matching bye is not double-counted.
 ordering and strength is roster context; keeping them off card color prevents
 one visual channel from mixing unrelated concepts.
 
+K/DEF Dart Throw cards are deliberately stripped of contextual-signal treatment.
+The current team/bye signal model was built for offensive QB/RB/WR/TE roster
+relationships and should not be silently extended to special teams.
+
 ## Dart Throw mode
 
 Dart Throw mode is a late-draft view, not another ranking model. Eligibility is
@@ -247,26 +330,37 @@ server-derived from the existing positional-strength output:
 
 `eligible = QB >= 1.00 and RB >= 1.00 and WR >= 1.00 and TE >= 1.00`
 
-The threshold is intentionally simple and explicit. Dart status does not change
-any strength calculation.
+The threshold is intentionally simple and explicit. Kicker and defense do not
+participate in the gate, and Dart status does not change any strength calculation.
 
 Once eligible, the UI exposes a Normal / Dart Throw toggle. The toggle is local
 view state only; it does not edit repository preferences. If a later board poll
-makes any position fall below the threshold, Dart mode exits automatically.
+makes any core position fall below the threshold, Dart mode exits automatically.
 
 In Dart Throw mode:
 
-- only currently available players matched from `resources/dart-throws.csv` are
-  shown, including configured players outside the Normal-mode top 100;
-- CSV `order` replaces normal board order;
-- ordinary card enrichments still run: strength, contextual signals, stars, and
-  Do Not Draft;
+- currently available configured QB/RB/WR/TE candidates are drawn from the full
+  ranked backend pool, including players outside the Normal-mode top 100;
+- configured K/DEF candidates are joined from the separate active, undrafted
+  `dart_throw_pool`;
+- K and DEF columns are added only when at least one matching candidate at that
+  position is currently available;
+- CSV `order` replaces normal board order across offensive and special-team
+  candidates together;
+- ordinary card enrichments continue where the underlying model exists; K/DEF
+  intentionally have no strength, Cost-of-waiting, star/DND preference, or
+  contextual-signal calculation;
 - the configured rationale is added to each card;
-- Cost-of-waiting rails and the horizontal ADP marker are suppressed because
-  their geometry assumes canonical board order, which Dart mode intentionally
-  discards;
+- Cost-of-waiting rails, the QB/TE guaranteed-floor line, and the horizontal ADP
+  marker are suppressed because their geometry/context assumes the Normal
+  recommendation horizon, which Dart mode intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
   vanishing.
+
+`ui/board-dart-special-teams.js` is intentionally a view-layer adapter. It joins
+`payload.ranked` with `payload.dart_throw_pool` only after Dart mode is active,
+adds the temporary K/DEF columns, and cleans offensive-only signal decoration off
+special-team cards. It must never alter the Normal-mode player list.
 
 The user can toggle back to Normal without mutating any server or repository
 state. See [`docs/dart-throw-mode.md`](docs/dart-throw-mode.md).
@@ -283,12 +377,19 @@ re-rank those rows.
 ### Wrapper modules preserve one render pipeline
 
 Several UI files wrap the global `renderBoard` function to add Cost of waiting,
-strength, contextual signals, Do Not Draft, stars, and Dart rationale. Wrapper
-order matters. Any mode that filters the board must create the final board view
-before `renderBoard` is called so every enhancer sees the same player list and
-cell index mapping. `board-limit.js` wraps `boardForCurrentMode` immediately after
-`script.js`, before the render enhancers, so Normal-mode slicing happens once and
-Dart Throw mode can explicitly bypass it.
+strength, contextual signals, Do Not Draft, stars, Dart rationale, and Dart-only
+special teams. Wrapper order matters. Any mode that filters the board must create
+the final board view before `renderBoard` is called so every enhancer sees the
+same player list and cell index mapping. `board-limit.js` wraps
+`boardForCurrentMode` immediately after `script.js`; the later
+`board-dart-special-teams.js` wrapper leaves Normal mode untouched and replaces
+only the active Dart view with the combined configured pool.
+
+`board-cost.js` is one deliberate exception to using only the sliced render view:
+its guaranteed QB/TE quality floor consults `lastBoardPayload.ranked` so a valid
+canonical floor beyond Normal row 100 is not lost. It may **read** that broader
+pool for the deterministic floor, but it must not use it to re-rank or expand the
+Normal board itself.
 
 ### Draft-time controls are deliberately scarce
 
@@ -304,6 +405,11 @@ not expose `draft_order` before starting; `SLEEPER_DRAFT_SLOT` is the explicit
 override. Once the configured user has made a pick, `picked_by` plus
 `draft_slot` is sufficient evidence to recover a mock slot. Before evidence
 exists, the app must not guess.
+
+Board recommendation timing may deliberately differ from the raw on-the-clock
+pick by exactly one selection at a snake turn: if the user controls both current
+and next picks, the recommendation horizon advances to the second pick. Do not
+apply that shortcut when another drafter owns the intervening selection.
 
 Draft discovery goes through user leagues because mock drafts cannot be
 enumerated by Sleeper. The paste-a-draft-ID path therefore remains necessary.
@@ -328,12 +434,28 @@ private home-server Test container has already pulled and been exercised.
 ## Repo history worth not relearning
 
 - **Sleeper `search_rank` is not canonical ADP.** It is a visible fallback only.
-- **The Normal board horizon is 100, but Dart Throw matching needs the broader
-  pool.** Keep display limiting separate from the backend available-player data.
+- **The Normal board horizon is 100, but Dart Throw matching and the QB/TE
+  guaranteed floor need the broader pool.** Keep display limiting separate from
+  the backend available-player data.
+- **K/DEF are Dart-only, not new ranked positions.** Do not add them to canonical
+  ADP ordering, Cost of waiting, positional strength, or the Normal board merely
+  because they now appear in the Dart view.
+- **Team defense identity is the team abbreviation.** Do not rely on Sleeper's
+  human-readable defense name matching `Chargers D` or `Jaguars D` exactly.
+- **QB/TE demand counts unique possible buyers, not picks or probability.** A turn
+  drafter with two intervening picks counts once, and existing position ownership
+  is the only exclusion rule. Keep that count available to the calculation even
+  though it is not rendered on the card.
+- **`GUARANTEED <pos>: player` is deliberately terse.** With X needy opponents,
+  use the `(X + 1)`th available canonical-ADP option as the internal quality
+  floor; do not append explanatory or exact-survival wording to the card.
+- **Two consecutive user picks are one recommendation turn.** When currently on
+  the first pick, project Cost of waiting and demand from the second pick instead
+  of pretending another drafter can act between them.
 - **Ordinal ADP movement is not player-value loss.** Do not derive fake cardinal
   value or scarcity percentages from Cost of waiting.
-- **Uncalibrated urgency thresholds are worse than raw evidence.** Show the
-  evidence until validation supports categories.
+- **Uncalibrated urgency thresholds are worse than raw evidence.** Keep the raw
+  evidence in the model until validation supports categories.
 - **Roster counts are not roster strength.** Current strength uses Consensus ADP,
   league-relative targets, FLEX allocation, and diminishing bench-depth credit.
 - **Browser-local recommendation settings create environment drift.** Stars,
@@ -361,6 +483,9 @@ private home-server Test container has already pulled and been exercised.
 - No runtime write API for repository preferences.
 - No unified master recommendation score.
 - No attempt to turn Dart Throw rationale into verified news or model input.
+- No probability conversion for QB/TE possible-buyer counts.
+- No K/DEF ranking, strength, or Cost-of-waiting model; special teams are static
+  repository choices in Dart Throw mode only.
 
 ## Open setup items
 
