@@ -118,9 +118,7 @@ def test_special_team_ui_joins_dart_pool_without_changing_normal_limit():
     limit = (ROOT / "ui" / "board-limit.js").read_text()
 
     assert "/ui/board-dart-special-teams.js" in index
-    assert index.index("/ui/board-dart-special-teams.js") > index.index(
-        "/ui/board-dart-throws.js"
-    )
+    assert index.index("/ui/board-dart-special-teams.js") > index.index("/ui/board-dart-throws.js")
     assert "...(board.dart_throw_pool || [])" in special
     assert "DART_SPECIAL_POSITIONS = ['K', 'DEF']" in special
     assert "columns.push(position)" in special
