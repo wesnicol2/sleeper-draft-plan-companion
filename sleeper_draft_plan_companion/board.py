@@ -323,7 +323,9 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
     future_picks = _future_user_picks(state, count=2, after_pick_no=recommendation_pick)
     state["recommendation_pick_no"] = recommendation_pick
     state["recommendation_advanced_to_second_turn_pick"] = bool(
-        actual_pick is not None and recommendation_pick is not None and recommendation_pick != actual_pick
+        actual_pick is not None
+        and recommendation_pick is not None
+        and recommendation_pick != actual_pick
     )
     state["my_next_pick_nos"] = future_picks
     state["my_next_pick_no"] = future_picks[0] if future_picks else None
