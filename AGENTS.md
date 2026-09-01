@@ -29,10 +29,10 @@ as a second screen and updates automatically. Draft-time interaction is treated
 as a cost: useful state should already be visible when the user looks at it.
 
 The checkpoint plan remains authoritative for its own positional minimums.
-Ranking, checkpoint need, Cost of waiting, positional strength, contextual
-signals, personal preferences, and Dart Throw status are intentionally separate
-facts. A new model should not quietly redefine an older one just because both
-appear on the same card.
+Ranking, checkpoint need, Cost of waiting, positional strength, live QB/TE demand,
+contextual signals, personal preferences, and Dart Throw status are intentionally
+separate facts. A new model should not quietly redefine an older one just because
+both appear on the same card.
 
 ## Current architecture
 
@@ -44,8 +44,8 @@ The service is intentionally small:
 - `adp.py` loads canonical static ADP from `resources/adp.csv` and matches it to
   Sleeper player IDs.
 - `plan.py` loads checkpoint configuration.
-- `board.py` assembles the available-player pool, future-pick markers,
-  positional strength, and joined ADP/plan context.
+- `board.py` assembles the available-player pool, turn-aware future-pick markers,
+  QB/TE demand, positional strength, and joined ADP/plan context.
 - `decision.py` owns Cost of waiting context.
 - `strength.py` owns the Consensus-ADP positional-strength model.
 - `preferences.py` loads repository-backed player, strength-model, and Dart Throw
@@ -170,6 +170,44 @@ ADP produces unavailable Cost of waiting instead of mixing scales.
 The backend may retain two projected picks for future use; the board presents
 the next opportunity to minimize draft-time noise.
 
+### Live QB/TE demand is evidence, not probability
+
+QB and TE receive one extra piece of next-pick evidence. For the user's next
+relevant selection, `board.py` enumerates every still-unmade pick before that
+selection, converts those picks to draft slots with the existing snake math,
+excludes the user's own slot, and deduplicates opponents.
+
+For each of QB and TE the backend reports:
+
+- number of unique opposing drafters who still select before the user's next pick;
+- how many of those drafters have not yet selected that position;
+- the corresponding slot IDs for debugging/tests.
+
+An opponent counts once even if the snake gives that drafter two picks in the
+window. A drafter who already has a QB is excluded from QB risk even though a
+backup QB remains possible; TE follows the same rule. This is intentionally a
+possible-buyer count, not a calibrated probability or urgency score. Do not turn
+`3 of 8 without QB` into `37.5% chance the player disappears` without evidence.
+
+The UI shows this only on the best-current QB and TE cards and suppresses it in
+Dart Throw mode. It does not alter rank, ADP loss, strength, or card color.
+
+### Back-to-back turn picks use the second pick as recommendation anchor
+
+At slot 1 or the last slot, the user can own two consecutive picks across a snake
+round boundary. When the current pick is the **first** of that pair, using the
+immediate second pick as the Cost-of-waiting horizon produces nonsense such as
+`same player` being the projected fallback when nobody else can draft in between.
+
+`board.py` therefore advances only the **recommendation anchor** to the second
+pick of the pair, then projects future picks from there. The real Sleeper
+`on_the_clock` value is not rewritten; the Draft panel can still show the actual
+first selection. Cost of waiting, the next-pick marker, picks-until-next, and
+QB/TE demand all use the turn-aware recommendation horizon.
+
+When the user is already on the second pick, or is not at a turn slot, the actual
+on-the-clock pick remains the recommendation anchor.
+
 ## Positional strength
 
 Raw roster count is a poor proxy for roster quality. The current model uses
@@ -285,9 +323,9 @@ In Dart Throw mode:
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
 - the configured rationale is added to each card;
-- Cost-of-waiting rails and the horizontal ADP marker are suppressed because
-  their geometry assumes canonical board order, which Dart mode intentionally
-  discards;
+- Cost-of-waiting rails, QB/TE demand lines, and the horizontal ADP marker are
+  suppressed because their geometry/context assumes the Normal recommendation
+  horizon, which Dart mode intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
   vanishing.
 
@@ -334,6 +372,11 @@ override. Once the configured user has made a pick, `picked_by` plus
 `draft_slot` is sufficient evidence to recover a mock slot. Before evidence
 exists, the app must not guess.
 
+Board recommendation timing may deliberately differ from the raw on-the-clock
+pick by exactly one selection at a snake turn: if the user controls both current
+and next picks, the recommendation horizon advances to the second pick. Do not
+apply that shortcut when another drafter owns the intervening selection.
+
 Draft discovery goes through user leagues because mock drafts cannot be
 enumerated by Sleeper. The paste-a-draft-ID path therefore remains necessary.
 Selected draft ID may live in URL/localStorage because it is navigation state,
@@ -364,6 +407,12 @@ private home-server Test container has already pulled and been exercised.
   because they now appear in the Dart view.
 - **Team defense identity is the team abbreviation.** Do not rely on Sleeper's
   human-readable defense name matching `Chargers D` or `Jaguars D` exactly.
+- **QB/TE risk counts unique possible buyers, not picks or probability.** A turn
+  drafter with two intervening picks counts once, and existing position ownership
+  is the only exclusion rule.
+- **Two consecutive user picks are one recommendation turn.** When currently on
+  the first pick, project Cost of waiting and demand from the second pick instead
+  of pretending another drafter can act between them.
 - **Ordinal ADP movement is not player-value loss.** Do not derive fake cardinal
   value or scarcity percentages from Cost of waiting.
 - **Uncalibrated urgency thresholds are worse than raw evidence.** Show the
@@ -395,6 +444,7 @@ private home-server Test container has already pulled and been exercised.
 - No runtime write API for repository preferences.
 - No unified master recommendation score.
 - No attempt to turn Dart Throw rationale into verified news or model input.
+- No probability conversion for QB/TE possible-buyer counts.
 - No K/DEF ranking, strength, or Cost-of-waiting model; special teams are static
   repository choices in Dart Throw mode only.
 

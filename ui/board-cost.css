@@ -10,7 +10,8 @@
   vertical-align: middle;
 }
 
-.board-position-path {
+.board-position-path,
+.board-position-demand {
   display: block;
   position: relative;
   z-index: 8;
@@ -21,6 +22,10 @@
   font-weight: 750;
   line-height: 1.2;
   white-space: normal;
+}
+
+.board-position-demand {
+  border-left-style: dashed;
 }
 
 .board-position-path.ordinal-2 {
@@ -90,7 +95,8 @@
 }
 
 @media (max-width: 560px) {
-  .board-position-path {
+  .board-position-path,
+  .board-position-demand {
     font-size: 0.6rem;
   }
 

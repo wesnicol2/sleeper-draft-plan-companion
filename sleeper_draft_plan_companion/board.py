@@ -6,6 +6,7 @@ from . import adp, bye, decision, draft, sleeper, strength
 from . import plan as plan_module
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
+DEMAND_POSITIONS = ("QB", "TE")
 TIE_BREAK_ORDER = ("RB", "WR", "TE", "QB")
 CRITERIA = ("matches the checkpoint's lean",)
 
@@ -118,13 +119,31 @@ def _infer_mock_slot(state, picks, username):
         state["my_slot_note"] = "draft slot inferred from your existing mock-draft pick"
 
 
-def _future_user_picks(state, count=2):
+def _recommendation_anchor_pick(state):
+    """Treat the first pick of a snake-turn pair as if the user is on the second."""
+    slot = state.get("my_slot")
+    on_clock = (state.get("on_the_clock") or {}).get("pick_no")
+    teams, rounds = int(state.get("teams") or 12), int(state.get("rounds") or 15)
+    if slot is None or on_clock is None:
+        return on_clock
+    if draft.slot_on_the_clock(on_clock, teams) != int(slot):
+        return on_clock
+    next_pick = on_clock + 1
+    if next_pick > teams * rounds:
+        return on_clock
+    if draft.slot_on_the_clock(next_pick, teams) == int(slot):
+        return next_pick
+    return on_clock
+
+
+def _future_user_picks(state, count=2, after_pick_no=None):
     slot = state.get("my_slot")
     on_clock = (state.get("on_the_clock") or {}).get("pick_no")
     teams, rounds = state.get("teams") or 12, state.get("rounds") or 15
-    if slot is None or on_clock is None:
+    anchor = on_clock if after_pick_no is None else after_pick_no
+    if slot is None or anchor is None:
         return []
-    picks, cursor = [], on_clock + 1
+    picks, cursor = [], anchor + 1
     while len(picks) < count:
         pick_no = draft.next_pick_for_slot(cursor, int(slot), int(teams), int(rounds))
         if pick_no is None:
@@ -132,6 +151,51 @@ def _future_user_picks(state, count=2):
         picks.append(pick_no)
         cursor = pick_no + 1
     return picks
+
+
+def _position_demand_before_next(state, all_picks, players, next_pick_no):
+    """Count unique future opponents without a QB/TE before the user's next pick."""
+    slot = state.get("my_slot")
+    on_clock = (state.get("on_the_clock") or {}).get("pick_no")
+    teams = int(state.get("teams") or 12)
+    if slot is None or on_clock is None or next_pick_no is None:
+        return {}
+
+    opponent_slots: list[int] = []
+    seen_slots: set[int] = set()
+    for pick_no in range(on_clock, next_pick_no):
+        pick_slot = draft.slot_on_the_clock(pick_no, teams)
+        if pick_slot == int(slot) or pick_slot in seen_slots:
+            continue
+        seen_slots.add(pick_slot)
+        opponent_slots.append(pick_slot)
+
+    owners = {position: set() for position in DEMAND_POSITIONS}
+    for pick in all_picks:
+        pick_slot = pick.get("draft_slot")
+        if pick_slot is None:
+            continue
+        meta = pick.get("metadata") or {}
+        position = meta.get("position")
+        if position not in DEMAND_POSITIONS:
+            player = players.get(str(pick.get("player_id") or "")) or {}
+            position = player.get("position")
+        if position in DEMAND_POSITIONS:
+            owners[position].add(int(pick_slot))
+
+    context = {}
+    for position in DEMAND_POSITIONS:
+        slots_without = [
+            pick_slot for pick_slot in opponent_slots if pick_slot not in owners[position]
+        ]
+        context[position] = {
+            "position": position,
+            "next_pick_no": next_pick_no,
+            "drafters_before_next": len(opponent_slots),
+            "drafters_without_position": len(slots_without),
+            "slots_without_position": slots_without,
+        }
+    return context
 
 
 def _pick_markers(ranked, future_picks):
@@ -254,12 +318,27 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
         state, needs, players, consensus_index, parameters, draft_id, fresh
     )
 
-    future_picks = _future_user_picks(state, count=2)
+    actual_pick = (state.get("on_the_clock") or {}).get("pick_no")
+    recommendation_pick = _recommendation_anchor_pick(state)
+    future_picks = _future_user_picks(state, count=2, after_pick_no=recommendation_pick)
+    state["recommendation_pick_no"] = recommendation_pick
+    state["recommendation_advanced_to_second_turn_pick"] = bool(
+        actual_pick is not None
+        and recommendation_pick is not None
+        and recommendation_pick != actual_pick
+    )
     state["my_next_pick_nos"] = future_picks
     state["my_next_pick_no"] = future_picks[0] if future_picks else None
-    current_pick = (state.get("on_the_clock") or {}).get("pick_no")
     state["picks_until_my_turn"] = (
-        future_picks[0] - current_pick if future_picks and current_pick is not None else None
+        future_picks[0] - recommendation_pick
+        if future_picks and recommendation_pick is not None
+        else None
+    )
+    state["position_demand_before_next"] = _position_demand_before_next(
+        state,
+        all_picks,
+        players,
+        future_picks[0] if future_picks else None,
     )
     lean = (checkpoint or {}).get("lean")
     ranked = ranked_pool(
@@ -294,7 +373,7 @@ def build_board(draft_id, username=None, fresh=False, strength_parameters=None):
         players,
         taken,
         rank_index,
-        current_pick,
+        recommendation_pick,
         future_picks,
         needs,
         [entry["player_id"] for entry in ranked],
