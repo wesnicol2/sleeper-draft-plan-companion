@@ -53,16 +53,17 @@ The service is intentionally small:
 - `preferences.py` loads repository-backed player, strength-model, and Dart Throw
   configuration and builds the Dart-only kicker/team-defense pool.
 - `ui/` is plain HTML/CSS/JavaScript with no frontend build step. `board-sort.js`
-  owns the instantaneous Normal Sleeper/AVG view switch and turns the existing
-  Dart strength threshold into a presentation-only readiness signal.
+  owns the instantaneous Sleeper/AVG view selection shared by Normal and Dart
+  presentation and turns the existing Dart strength threshold into a
+  presentation-only readiness signal.
 
 The backend owns canonical ranking and recommendation data. JavaScript may change
 how a server-produced fact is displayed, including reordering a cloned Normal
-view by AVG, but it must not mutate `payload.ranked`, invent a competing backend
-canonical ranking, or silently mutate repository-owned preferences. The QB/TE
-guaranteed floor is a deterministic presentation derived from two backend facts
-already in the payload: the live needy-drafter count and the full canonical-ADP
-available pool.
+view by AVG or reordering the configured Dart candidate subset, but it must not
+mutate `payload.ranked`, invent a competing backend canonical ranking, or
+silently mutate repository-owned preferences. The QB/TE guaranteed floor is a
+deterministic presentation derived from two backend facts already in the payload:
+the live needy-drafter count and the full canonical-ADP available pool.
 
 The Normal-card ADP value gap is also deliberately presentation-only. The backend
 supplies both canonical Sleeper ADP and market-average `AVG`; the UI compares
@@ -187,7 +188,8 @@ not be conflated:
 - `Sleeper` is the canonical static overall rank for backend board order, Cost of
   waiting, next-pick geometry, and the QB/TE guaranteed floor.
 - `AVG` is the market-average valuation input used by positional strength, the
-  Normal-card valuation gap, and the optional Average Normal-board view.
+  Normal-card valuation gap, and the optional Average display order in Normal or
+  the configured Dart candidate list.
 
 Sleeper's public player payload `search_rank` is still only an explicitly labeled
 fallback when the static snapshot has no usable Sleeper rank.
@@ -223,9 +225,9 @@ the next opportunity to minimize draft-time noise.
 The magnitude is the absolute Sleeper-vs-AVG gap and is rendered to one decimal
 place only when needed. The badge is explanatory metadata only. It must not alter
 canonical `payload.ranked`, Cost of waiting, checkpoint need, or strength. It is
-valid in either Normal display sort and hidden in Dart Throw mode because the
-Dart view intentionally replaces normal ADP order with a repository-owned static
-order.
+valid in either Normal display sort and remains hidden in Dart Throw mode even
+when the Dart list is AVG-sorted; the Dart view uses the sort itself rather than
+the Normal valuation badge.
 
 ### Live QB/TE demand is evidence, not probability
 
@@ -381,8 +383,9 @@ relationships and should not be silently extended to special teams.
 
 ## Dart Throw mode
 
-Dart Throw mode is a fixed-order alternative view, not another ranking model. It
-is **always available**. The backend still derives the existing readiness fact:
+Dart Throw mode is a configured-candidate alternative view, not another backend
+ranking model. It is **always available**. The backend still derives the existing
+readiness fact:
 
 `ready = QB >= 1.00 and RB >= 1.00 and WR >= 1.00 and TE >= 1.00`
 
@@ -403,8 +406,10 @@ In Dart Throw mode:
   `dart_throw_pool`;
 - K and DEF columns are added only when at least one matching candidate at that
   position is currently available;
-- CSV `order` replaces both Normal Sleeper and Average view order across offensive
-  and special-team candidates together;
+- the shared sort switch has Dart-specific semantics: **Sleeper** uses the
+  repository CSV's explicit custom `order`; **Average** sorts candidates with a
+  usable `AVG` by market-average ADP, with AVG-less entries such as K/DEF placed
+  afterward in their custom relative order;
 - ordinary card enrichments continue where the underlying model exists; K/DEF
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
@@ -418,13 +423,16 @@ In Dart Throw mode:
 
 `ui/board-dart-special-teams.js` is intentionally a view-layer adapter. It joins
 `payload.ranked` with `payload.dart_throw_pool` only after Dart mode is active,
-adds the temporary K/DEF columns, and cleans offensive-only signal decoration off
-special-team cards. It must never alter the Normal-mode player list.
+reads the shared sort source from `board-sort.js`, applies custom Dart order or
+AVG order as selected, adds the temporary K/DEF columns, and cleans
+offensive-only signal decoration off special-team cards. It must never alter the
+Normal-mode player list or backend ranking.
 
 The user can toggle back to Normal without mutating any server or repository
 state. See [`docs/dart-throw-mode.md`](docs/dart-throw-mode.md). That human-owned
-spec may lag this UI-access change until explicitly approved for editing; code,
-README, and this architecture note are authoritative for the current behavior.
+spec may lag this UI-access/sort behavior until explicitly approved for editing;
+code, README, and this architecture note are authoritative for the current
+behavior.
 
 ## Frontend decisions
 
@@ -434,7 +442,9 @@ Board cells carry explicit grid row/column placement because band labels and row
 spans can otherwise shift unrelated columns. The backend ranked band is canonical
 Sleeper order. `board-sort.js` may create a cloned Average-ordered Normal view,
 and `board-limit.js` then takes the first 100 rows from whichever Normal view is
-selected. Neither step mutates the server payload.
+selected. In Dart mode, `board-dart-special-teams.js` applies the selected custom
+or AVG order only to the configured Dart subset. None of these steps mutates the
+server payload.
 
 ### Wrapper modules preserve one render pipeline
 
@@ -446,9 +456,11 @@ must create the final board view before `renderBoard` is called so every enhance
 sees the same player list and cell index mapping.
 
 `board-sort.js` wraps `boardForCurrentMode` immediately after `script.js`; it must
-stay before `board-limit.js` so AVG sorting sees the full backend pool. The later
-`board-dart-special-teams.js` wrapper leaves Normal mode untouched and replaces
-only the active Dart view with the combined configured pool.
+stay before `board-limit.js` so Normal AVG sorting sees the full backend pool. It
+also exposes the current sort source and shared AVG comparator/display-rank
+helpers. The later `board-dart-special-teams.js` wrapper leaves Normal mode
+untouched, builds the combined configured Dart pool, and then applies either the
+custom CSV order or the shared AVG ordering semantics.
 
 `board-cost.js` is one deliberate exception to using only the sliced render view:
 its guaranteed QB/TE quality floor consults `lastBoardPayload.ranked` so a valid
@@ -466,10 +478,12 @@ guaranteed-floor math.
 ### Draft-time controls are deliberately scarce
 
 Repository-owned preferences have no controls. Draft selection and Refresh are
-setup/escape-hatch interactions. Normal has two explicit local view controls:
-Sleeper/Average changes only display order, and Normal/Dart Throw changes only the
-candidate view. Both re-render the last board payload immediately and neither
-writes repository configuration or waits for a server poll.
+setup/escape-hatch interactions. The Sleeper/Average control changes display
+order in the active candidate view: canonical Sleeper order in Normal, custom
+CSV order in Dart when Sleeper is selected, and AVG order in either view when
+Average is selected. Normal/Dart Throw changes only the candidate set. Both
+controls re-render the last board payload immediately and neither writes
+repository configuration or waits for a server poll.
 
 ## Draft timing and discovery
 
@@ -510,7 +524,8 @@ private home-server Test container has already pulled and been exercised.
 
 - **The rankings snapshot has two intentional ADP roles.** `Sleeper` controls
   canonical backend order and Sleeper-defined decision geometry; `AVG` is market
-  valuation and may optionally control only the cloned Normal display order.
+  valuation and may optionally control cloned display order in Normal or the
+  configured Dart candidate list.
 - **The Normal sort switch must happen before the 100-row limit.** Otherwise AVG
   would only reshuffle Sleeper's top 100 instead of selecting the true AVG top
   100 from the full available pool.
@@ -521,6 +536,10 @@ private home-server Test container has already pulled and been exercised.
 - **Dart Throw readiness is not access control.** The button is always clickable;
   the four-position `1.00` condition only makes it bold. Do not reintroduce
   automatic lockout or forced exit without an explicit product decision.
+- **Dart Throw has two presentation orders.** Sleeper selection means the
+  repository's custom `dart_throw_order`; Average selection means usable `AVG`
+  ascending, with missing-AVG entries after it in custom relative order. Neither
+  path changes the configured Dart candidate set or backend canonical ranking.
 - **Sleeper player-payload `search_rank` is not canonical ADP.** It is a visible
   fallback only when the static snapshot has no usable Sleeper rank.
 - **Player preferences follow identity, not rank number.** Rankings refreshes may
@@ -559,8 +578,9 @@ private home-server Test container has already pulled and been exercised.
   evidence-backed signal is added later.
 - **Same-position team overlap is meaningfully stronger than cross-position
   overlap.** Use signal weight, not duplicate hidden badges, to encode that.
-- **Dart Throw ordering is intentionally not ADP ordering.** Do not draw ADP
-  geometry over a statically re-ordered board.
+- **Dart Throw never uses Normal recommendation geometry.** Custom-order Dart and
+  AVG-order Dart both suppress Cost-of-waiting rails, guarantees, and next-pick
+  markers rather than drawing Sleeper decision geometry over a filtered view.
 - **Real mock drafts exposed slot-resolution behavior fixtures missed.** Do not
   guess a slot without Sleeper evidence or an explicit override.
 - **Ranking source semantics matter more than a green fixture suite.** Know what

@@ -143,8 +143,8 @@ player's canonical `Sleeper` ADP without changing recommendation math:
 
 The magnitude is `|Sleeper - AVG|`, shown to one decimal place only when needed.
 The sign remains visible in either Normal sort and is hidden in Dart Throw mode,
-because that view deliberately uses its repository-owned static order instead of
-normal ADP presentation.
+even when the Dart list itself is AVG-sorted; Dart cards stay focused on the
+configured candidate list rather than repeating the Normal valuation badge.
 
 ### Starred and Do Not Draft
 
@@ -303,8 +303,10 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
   the Normal-mode 100-player horizon;
 - supports QB/RB/WR/TE plus Dart-only `K` and `DEF` candidates; K/DEF columns are
   added only while Dart Throw mode is active;
-- ignores either Normal Sleeper/AVG sort and uses the CSV's explicit static
-  `order`;
+- honors the same Sleeper / Average switch with Dart-specific semantics: Sleeper
+  uses the CSV's explicit custom `order`, while Average sorts Dart candidates
+  with usable `AVG` by market-average ADP; AVG-less entries such as K/DEF follow
+  afterward in their custom relative order;
 - keeps ordinary card treatment where the corresponding model exists; K/DEF
   cards intentionally have no positional-strength, Cost-of-waiting, or contextual
   signal calculation;
@@ -315,9 +317,8 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
   determine identity;
 - reports configured names that could not be matched so a stale list is visible;
 - suppresses Cost-of-waiting rails, the QB/TE guaranteed-floor line, the Normal
-  ADP value sign, and the ADP next-pick marker while the static Dart Throw order
-  is displayed, because those overlays only make sense on the Normal
-  recommendation horizon.
+  ADP value sign, and the ADP next-pick marker throughout Dart Throw mode, because
+  those overlays only make sense on the Normal recommendation horizon.
 
 The rationale text is deliberately personal scouting context, not an assertion
 that the underlying news/injury premise has been independently verified by the
@@ -359,8 +360,9 @@ board payload immediately and do not wait for a poll.
 - `resources/player-preferences.csv` — starred / Do Not Draft source.
 - `resources/general-preferences.csv` — strength-model parameters.
 - `resources/dart-throws.csv` — static Dart Throw order and rationale.
-- `ui/` — plain HTML/CSS/vanilla JS; `board-sort.js` owns the instant Normal sort
-  switch and turns the Dart strength threshold into presentation-only readiness.
+- `ui/` — plain HTML/CSS/vanilla JS; `board-sort.js` owns the instant sort switch
+  shared by Normal and Dart views and turns the Dart strength threshold into
+  presentation-only readiness.
 - `tests/` — unit and UI-contract tests.
 - `docs/` — human-owned long-form planning/specification documents.
 

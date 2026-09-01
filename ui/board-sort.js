@@ -8,7 +8,7 @@
   // gate remains useful only as a "ready" signal for button emphasis.
   dartThrowEligible = function () { return true; };
 
-  function compareAverage(a, b) {
+  function compareAverage(a, b, fallback = 'rank') {
     const aAverage = Number(a.consensus_adp);
     const bAverage = Number(b.consensus_adp);
     const aHasAverage = Number.isFinite(aAverage) && aAverage > 0;
@@ -16,7 +16,13 @@
 
     if (aHasAverage && bHasAverage && aAverage !== bAverage) return aAverage - bAverage;
     if (aHasAverage !== bHasAverage) return aHasAverage ? -1 : 1;
-    return Number(a.rank || Number.MAX_SAFE_INTEGER) - Number(b.rank || Number.MAX_SAFE_INTEGER);
+
+    const fallbackValue = player => {
+      const raw = fallback === 'dart' ? player.dart_throw_order : player.rank;
+      const value = Number(raw);
+      return Number.isFinite(value) && value > 0 ? value : Number.MAX_SAFE_INTEGER;
+    };
+    return fallbackValue(a) - fallbackValue(b);
   }
 
   function displayRank(player) {
@@ -55,6 +61,17 @@
     renderLastBoard();
   }
 
+  // Later view wrappers (notably Dart Throw special teams) need to honor the
+  // same instant sort selection without duplicating local state or fetching.
+  window.boardSortSource = () => normalBoardSort;
+  window.compareAverageBoardPlayers = compareAverage;
+  window.averageBoardDisplayRank = player => {
+    const average = Number(player.consensus_adp);
+    if (!Number.isFinite(average) || average <= 0) return '—';
+    const rounded = Math.round(average * 10) / 10;
+    return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  };
+
   boardForCurrentMode = function (board) {
     const view = originalBoardForCurrentMode(board);
     updateDartReady(board);
@@ -76,7 +93,7 @@
 
   renderBoard = function (board) {
     originalRenderBoard(board);
-    if (!board || board.dart_throw_active) return;
+    if (!board) return;
     const cells = Array.from(document.querySelectorAll('#boardGrid .granked'));
     (board.ranked || []).forEach((player, index) => {
       const rank = cells[index] && cells[index].querySelector('.prank');

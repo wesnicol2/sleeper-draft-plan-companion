@@ -3,17 +3,45 @@
   const originalBoardForCurrentMode = boardForCurrentMode;
   const originalRenderBoard = renderBoard;
 
+  function compareDartAverage(a, b) {
+    if (window.compareAverageBoardPlayers) {
+      return window.compareAverageBoardPlayers(a, b, 'dart');
+    }
+    const aAverage = Number(a.consensus_adp);
+    const bAverage = Number(b.consensus_adp);
+    const aHasAverage = Number.isFinite(aAverage) && aAverage > 0;
+    const bHasAverage = Number.isFinite(bAverage) && bAverage > 0;
+    if (aHasAverage && bHasAverage && aAverage !== bAverage) return aAverage - bAverage;
+    if (aHasAverage !== bHasAverage) return aHasAverage ? -1 : 1;
+    return Number(a.dart_throw_order || Number.MAX_SAFE_INTEGER) -
+      Number(b.dart_throw_order || Number.MAX_SAFE_INTEGER);
+  }
+
   boardForCurrentMode = function (board) {
     const view = originalBoardForCurrentMode(board);
     if (!view || !view.dart_throw_active) return view;
 
+    const sortSource = window.boardSortSource ? window.boardSortSource() : 'sleeper';
     const dartThrows = [
       ...(board.ranked || []),
       ...(board.dart_throw_pool || []),
     ]
       .filter(player => player.dart_throw_order != null)
-      .sort((a, b) => a.dart_throw_order - b.dart_throw_order)
-      .map(player => player.rank == null ? { ...player, rank: player.dart_throw_order } : player);
+      .map(player => ({ ...player }));
+
+    if (sortSource === 'average') {
+      dartThrows.sort(compareDartAverage);
+      dartThrows.forEach(player => {
+        player.display_rank = window.averageBoardDisplayRank
+          ? window.averageBoardDisplayRank(player)
+          : '—';
+      });
+    } else {
+      // In Dart Throw, the Sleeper toggle intentionally means the user's
+      // repository-owned custom order rather than canonical Sleeper ADP.
+      dartThrows.sort((a, b) => a.dart_throw_order - b.dart_throw_order);
+      dartThrows.forEach(player => { player.display_rank = player.dart_throw_order; });
+    }
 
     const columns = [...(view.columns || [])];
     DART_SPECIAL_POSITIONS.forEach((position) => {
@@ -27,6 +55,7 @@
       columns,
       ranked: dartThrows,
       rows: dartThrows.length,
+      dart_sort_source: sortSource,
     };
   };
 
