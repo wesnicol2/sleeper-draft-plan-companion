@@ -29,10 +29,10 @@ as a second screen and updates automatically. Draft-time interaction is treated
 as a cost: useful state should already be visible when the user looks at it.
 
 The checkpoint plan remains authoritative for its own positional minimums.
-Ranking, checkpoint need, Cost of waiting, positional strength, live QB/TE demand,
-contextual signals, personal preferences, and Dart Throw status are intentionally
-separate facts. A new model should not quietly redefine an older one just because
-both appear on the same card.
+Ranking, checkpoint need, Cost of waiting, positional strength, live QB/TE demand
+and guaranteed floors, contextual signals, personal preferences, and Dart Throw
+status are intentionally separate facts. A new model should not quietly redefine
+an older one just because both appear on the same card.
 
 ## Current architecture
 
@@ -54,7 +54,10 @@ The service is intentionally small:
 
 The backend owns ranking and recommendation data. JavaScript may change how a
 server-produced fact is displayed, but it must not invent a competing canonical
-ranking or silently mutate repository-owned preferences.
+ranking or silently mutate repository-owned preferences. The QB/TE guaranteed
+floor is a deterministic presentation derived from two backend facts already in
+the payload: the live needy-drafter count and the full canonical-ADP available
+pool.
 
 ## Repository-backed personal configuration
 
@@ -136,7 +139,8 @@ Ordering remains explicit and deterministic:
 
 The broader backend pool is intentional even though Normal mode stops at 100.
 Dart Throw mode may need to surface a repository-configured deep player outside
-that horizon, so capping `payload.ranked` itself would make Dart Throw behavior
+that horizon, and the QB/TE guaranteed floor may also land below the visible
+window. Capping `payload.ranked` itself would therefore make both behaviors
 depend on normal-board visibility. `rank_source` and `rank_value` keep the full
 ordering inspectable while `ui/board-limit.js` owns the Normal-mode slice.
 
@@ -192,6 +196,29 @@ possible-buyer count, not a calibrated probability or urgency score. Do not turn
 The UI shows this only on the best-current QB and TE cards and suppresses it in
 Dart Throw mode. It does not alter rank, ADP loss, strength, or card color.
 
+### The QB/TE guaranteed floor is a pigeonhole bound
+
+The same needy-drafter count supports a stronger deterministic statement without
+pretending to know which player any opponent will choose. If `X` opponents ahead
+lack QB and each drafts exactly one QB, at most `X` of the currently available
+top `X + 1` QBs can be removed. Therefore at least one player from that set must
+remain.
+
+The UI sorts the **full available canonical-ADP pool** for the position and uses
+zero-based `pool[X]`, the `(X + 1)`th player, as the displayed floor:
+
+`GUARANTEED QB · <player> or better`
+
+The exact named player is not guaranteed; the guarantee is **that ADP quality or
+better**. Opponents might draft players above, below, or around the displayed
+name, but no pattern of exactly one QB per needy opponent can eliminate all top
+`X + 1` options. TE uses the identical argument.
+
+Do not use `search_rank` or the unranked tail for this line. If the canonical pool
+is too short to establish the floor, omit the guarantee instead of mixing ranking
+scales. The calculation deliberately consults the unsliced backend payload even
+when Normal mode renders only 100 rows.
+
 ### Back-to-back turn picks use the second pick as recommendation anchor
 
 At slot 1 or the last slot, the user can own two consecutive picks across a snake
@@ -202,8 +229,8 @@ immediate second pick as the Cost-of-waiting horizon produces nonsense such as
 `board.py` therefore advances only the **recommendation anchor** to the second
 pick of the pair, then projects future picks from there. The real Sleeper
 `on_the_clock` value is not rewritten; the Draft panel can still show the actual
-first selection. Cost of waiting, the next-pick marker, picks-until-next, and
-QB/TE demand all use the turn-aware recommendation horizon.
+first selection. Cost of waiting, the next-pick marker, picks-until-next, QB/TE
+demand, and the guaranteed floor all use the turn-aware recommendation horizon.
 
 When the user is already on the second pick, or is not at a turn slot, the actual
 on-the-clock pick remains the recommendation anchor.
@@ -323,9 +350,9 @@ In Dart Throw mode:
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
 - the configured rationale is added to each card;
-- Cost-of-waiting rails, QB/TE demand lines, and the horizontal ADP marker are
-  suppressed because their geometry/context assumes the Normal recommendation
-  horizon, which Dart mode intentionally discards;
+- Cost-of-waiting rails, QB/TE demand and guaranteed-floor lines, and the
+  horizontal ADP marker are suppressed because their geometry/context assumes
+  the Normal recommendation horizon, which Dart mode intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
   vanishing.
 
@@ -356,6 +383,12 @@ same player list and cell index mapping. `board-limit.js` wraps
 `boardForCurrentMode` immediately after `script.js`; the later
 `board-dart-special-teams.js` wrapper leaves Normal mode untouched and replaces
 only the active Dart view with the combined configured pool.
+
+`board-cost.js` is one deliberate exception to using only the sliced render view:
+its guaranteed QB/TE quality floor consults `lastBoardPayload.ranked` so a valid
+canonical floor beyond Normal row 100 is not lost. It may **read** that broader
+pool for the deterministic floor, but it must not use it to re-rank or expand the
+Normal board itself.
 
 ### Draft-time controls are deliberately scarce
 
@@ -400,8 +433,9 @@ private home-server Test container has already pulled and been exercised.
 ## Repo history worth not relearning
 
 - **Sleeper `search_rank` is not canonical ADP.** It is a visible fallback only.
-- **The Normal board horizon is 100, but Dart Throw matching needs the broader
-  pool.** Keep display limiting separate from the backend available-player data.
+- **The Normal board horizon is 100, but Dart Throw matching and the QB/TE
+  guaranteed floor need the broader pool.** Keep display limiting separate from
+  the backend available-player data.
 - **K/DEF are Dart-only, not new ranked positions.** Do not add them to canonical
   ADP ordering, Cost of waiting, positional strength, or the Normal board merely
   because they now appear in the Dart view.
@@ -410,6 +444,9 @@ private home-server Test container has already pulled and been exercised.
 - **QB/TE risk counts unique possible buyers, not picks or probability.** A turn
   drafter with two intervening picks counts once, and existing position ownership
   is the only exclusion rule.
+- **`GUARANTEED <pos> · player or better` guarantees quality, not the named
+  player.** With X needy opponents, use the `(X + 1)`th available canonical-ADP
+  option; never convert this to an exact-player survival claim.
 - **Two consecutive user picks are one recommendation turn.** When currently on
   the first pick, project Cost of waiting and demand from the second pick instead
   of pretending another drafter can act between them.
