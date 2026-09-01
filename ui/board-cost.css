@@ -11,7 +11,8 @@
 }
 
 .board-position-path,
-.board-position-demand {
+.board-position-demand,
+.board-position-guaranteed {
   display: block;
   position: relative;
   z-index: 8;
@@ -26,6 +27,10 @@
 
 .board-position-demand {
   border-left-style: dashed;
+}
+
+.board-position-guaranteed {
+  border-left-style: double;
 }
 
 .board-position-path.ordinal-2 {
@@ -96,7 +101,8 @@
 
 @media (max-width: 560px) {
   .board-position-path,
-  .board-position-demand {
+  .board-position-demand,
+  .board-position-guaranteed {
     font-size: 0.6rem;
   }
 
