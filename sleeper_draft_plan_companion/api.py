@@ -72,6 +72,13 @@ def board(query):
             fresh=fresh,
             strength_parameters=preferences.load_general_preferences(),
         )
+        players, _fetched_at = sleeper.load_players()
+        taken_ids = {
+            pick["player_id"]
+            for pick in draft.get_picks(draft_id, fresh=fresh)
+            if pick.get("player_id")
+        }
+        payload["dart_throw_pool"] = preferences.build_dart_throw_special_pool(players, taken_ids)
         preferences.apply_player_preferences(payload)
     except Exception as exc:
         raise Unavailable(str(exc)) from exc

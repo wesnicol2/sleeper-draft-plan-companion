@@ -17,6 +17,26 @@
     return 'NEXT → ' + fallback.name + ' · ' + distanceText + ' · ' + costText(cost);
   }
 
+  function canonicalPositionPool(position, board) {
+    const fullRanked = (lastBoardPayload && lastBoardPayload.ranked) || board.ranked || [];
+    return fullRanked
+      .filter(player =>
+        player.position === position &&
+        player.rank_source === 'adp' &&
+        player.rank_value != null
+      )
+      .sort((a, b) => Number(a.rank_value) - Number(b.rank_value));
+  }
+
+  function guaranteedFloorSummary(position, demand, board) {
+    if (!demand || !['QB', 'TE'].includes(position)) return null;
+    const without = Math.max(0, Number(demand.drafters_without_position || 0));
+    const pool = canonicalPositionPool(position, board);
+    const floor = pool[without];
+    if (!floor) return null;
+    return 'GUARANTEED ' + position + ': ' + floor.name;
+  }
+
   function addFallbackRail(grid, anchorCell, fallbackCell) {
     if (!anchorCell || !fallbackCell) return;
     const anchorRow = Number(anchorCell.style.gridRowStart);
@@ -61,25 +81,37 @@
       cell.appendChild(badge);
 
       const cost = (player.wait_costs || [])[0];
-      if (!cost) return;
+      if (cost) {
+        const summary = document.createElement('span');
+        summary.className = 'board-position-path';
+        summary.textContent = fallbackSummary(player, cost, rankById);
+        cell.appendChild(summary);
 
-      const summary = document.createElement('span');
-      summary.className = 'board-position-path';
-      summary.textContent = fallbackSummary(player, cost, rankById);
-      cell.appendChild(summary);
+        if (cost.fallback) {
+          const fallbackId = cost.fallback.player_id;
+          const fallbackRank = rankById.get(fallbackId);
+          const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
+          if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
+          fallbackTargets.get(fallbackId).push({
+            position: player.position,
+            distance: distance,
+          });
 
-      if (!cost.fallback) return;
-      const fallbackId = cost.fallback.player_id;
-      const fallbackRank = rankById.get(fallbackId);
-      const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
-      if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
-      fallbackTargets.get(fallbackId).push({
-        position: player.position,
-        distance: distance,
-      });
+          if (!isDartThrow && fallbackRank != null && distance > 0) {
+            addFallbackRail(grid, cell, cellById.get(fallbackId));
+          }
+        }
+      }
 
-      if (!isDartThrow && fallbackRank != null && distance > 0) {
-        addFallbackRail(grid, cell, cellById.get(fallbackId));
+      if (!isDartThrow) {
+        const demand = (board.position_demand_before_next || {})[player.position];
+        const guaranteedText = guaranteedFloorSummary(player.position, demand, board);
+        if (guaranteedText) {
+          const guaranteedEl = document.createElement('span');
+          guaranteedEl.className = 'board-position-guaranteed';
+          guaranteedEl.textContent = guaranteedText;
+          cell.appendChild(guaranteedEl);
+        }
       }
     });
 
