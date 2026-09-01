@@ -189,31 +189,25 @@ unavailable rather than silently substituting Sleeper rank.
 
 ### QB and TE live demand
 
-The best available QB and TE cards add a separate live-demand line such as:
+For the user's next relevant selection, the backend counts unique opposing draft
+slots that still have at least one unmade selection before the user picks again,
+then counts how many of those opponents have not drafted the relevant position.
+An opponent counts once even if the snake gives that drafter two selections in
+the window. QB and TE use the identical rule.
 
-`QB RISK · 3 of 8 drafters before your next pick have no QB`
+The raw possible-buyer count is calculation-only and is not shown on the card.
+It does not change rank, ADP loss, strength, or card color.
 
-The denominator is the number of **unique opposing draft slots** that still have
-at least one unmade selection before the user's next relevant pick. An opponent
-counts once even if the snake gives that drafter two selections in the window.
-The numerator is how many of those opponents have not drafted that position yet.
-The TE line uses the identical rule for tight end ownership.
-
-This is possible-buyer context, not a probability. A drafter who already has a
-QB is not counted as QB risk, even though that drafter could choose a backup; the
-same rule applies to TE. The number updates as picks are made and does not change
-rank, ADP loss, strength, or card color.
-
-The same demand count also drives a conservative quality floor. If `X` opponents
+The same demand count drives the conservative quality floor. If `X` opponents
 before the next relevant pick still lack QB, the board takes the currently
-available canonical-ADP QBs in ADP order and shows the `(X + 1)`th one as:
+available canonical-ADP QBs in ADP order and uses the `(X + 1)`th one as the
+floor. The card shows only:
 
-`GUARANTEED QB · <player> or better`
+`GUARANTEED QB: <player>`
 
-This does **not** mean that exact named player is guaranteed to survive. It means
-that even if every QB-needy opponent ahead drafts exactly one QB, at most `X` of
-the current top `X + 1` QBs can disappear, so at least that ADP quality or better
-must remain. TE uses the identical rule. The calculation uses the full backend
+TE uses the identical rule. The displayed name represents the deterministic ADP
+quality floor implied by the assumption that every needy opponent ahead drafts
+exactly one at the position. The calculation uses the full backend
 available-player pool, so the floor may be deeper than the visible Normal top
 100, and it uses canonical ADP only; Sleeper `search_rank` is never substituted
 into the guarantee.
@@ -284,9 +278,9 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
 - matches team defenses by team abbreviation so display-name wording does not
   determine identity;
 - reports configured names that could not be matched so a stale list is visible;
-- suppresses Cost-of-waiting rails, QB/TE live-demand and guaranteed-floor lines,
-  and the ADP next-pick marker while the static Dart Throw order is displayed,
-  because those overlays only make sense on the Normal recommendation horizon.
+- suppresses Cost-of-waiting rails, the QB/TE guaranteed-floor line, and the ADP
+  next-pick marker while the static Dart Throw order is displayed, because those
+  overlays only make sense on the Normal recommendation horizon.
 
 The rationale text is deliberately personal scouting context, not an assertion
 that the underlying news/injury premise has been independently verified by the

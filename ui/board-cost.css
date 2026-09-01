@@ -11,7 +11,6 @@
 }
 
 .board-position-path,
-.board-position-demand,
 .board-position-guaranteed {
   display: block;
   position: relative;
@@ -23,10 +22,6 @@
   font-weight: 750;
   line-height: 1.2;
   white-space: normal;
-}
-
-.board-position-demand {
-  border-left-style: dashed;
 }
 
 .board-position-guaranteed {
@@ -101,7 +96,6 @@
 
 @media (max-width: 560px) {
   .board-position-path,
-  .board-position-demand,
   .board-position-guaranteed {
     font-size: 0.6rem;
   }

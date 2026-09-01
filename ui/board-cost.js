@@ -17,15 +17,6 @@
     return 'NEXT → ' + fallback.name + ' · ' + distanceText + ' · ' + costText(cost);
   }
 
-  function demandSummary(position, demand) {
-    if (!demand || !['QB', 'TE'].includes(position)) return null;
-    const without = Number(demand.drafters_without_position || 0);
-    const total = Number(demand.drafters_before_next || 0);
-    const verb = without === 1 ? 'has' : 'have';
-    return position + ' RISK · ' + without + ' of ' + total +
-      ' drafters before your next pick ' + verb + ' no ' + position;
-  }
-
   function canonicalPositionPool(position, board) {
     const fullRanked = (lastBoardPayload && lastBoardPayload.ranked) || board.ranked || [];
     return fullRanked
@@ -43,14 +34,7 @@
     const pool = canonicalPositionPool(position, board);
     const floor = pool[without];
     if (!floor) return null;
-
-    if (without === 0) {
-      return 'GUARANTEED ' + position + ' · ' + floor.name +
-        ' or better · no ' + position + '-needy drafter ahead';
-    }
-    const noun = without === 1 ? 'drafter takes' : 'drafters take';
-    return 'GUARANTEED ' + position + ' · ' + floor.name + ' or better · if all ' +
-      without + ' ' + position + '-needy ' + noun + ' one';
+    return 'GUARANTEED ' + position + ': ' + floor.name;
   }
 
   function addFallbackRail(grid, anchorCell, fallbackCell) {
@@ -121,14 +105,6 @@
 
       if (!isDartThrow) {
         const demand = (board.position_demand_before_next || {})[player.position];
-        const demandText = demandSummary(player.position, demand);
-        if (demandText) {
-          const demandEl = document.createElement('span');
-          demandEl.className = 'board-position-demand';
-          demandEl.textContent = demandText;
-          cell.appendChild(demandEl);
-        }
-
         const guaranteedText = guaranteedFloorSummary(player.position, demand, board);
         if (guaranteedText) {
           const guaranteedEl = document.createElement('span');

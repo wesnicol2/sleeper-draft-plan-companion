@@ -188,13 +188,14 @@ For each of QB and TE the backend reports:
 - the corresponding slot IDs for debugging/tests.
 
 An opponent counts once even if the snake gives that drafter two picks in the
-window. A drafter who already has a QB is excluded from QB risk even though a
+window. A drafter who already has a QB is excluded from QB demand even though a
 backup QB remains possible; TE follows the same rule. This is intentionally a
 possible-buyer count, not a calibrated probability or urgency score. Do not turn
 `3 of 8 without QB` into `37.5% chance the player disappears` without evidence.
 
-The UI shows this only on the best-current QB and TE cards and suppresses it in
-Dart Throw mode. It does not alter rank, ADP loss, strength, or card color.
+The raw demand count remains in the backend as an input to the deterministic
+floor but is intentionally not rendered on the card. It does not alter rank, ADP
+loss, strength, or card color.
 
 ### The QB/TE guaranteed floor is a pigeonhole bound
 
@@ -205,14 +206,14 @@ top `X + 1` QBs can be removed. Therefore at least one player from that set must
 remain.
 
 The UI sorts the **full available canonical-ADP pool** for the position and uses
-zero-based `pool[X]`, the `(X + 1)`th player, as the displayed floor:
+zero-based `pool[X]`, the `(X + 1)`th player, as the displayed floor. The card
+shows only:
 
-`GUARANTEED QB · <player> or better`
+`GUARANTEED QB: <player>`
 
-The exact named player is not guaranteed; the guarantee is **that ADP quality or
-better**. Opponents might draft players above, below, or around the displayed
-name, but no pattern of exactly one QB per needy opponent can eliminate all top
-`X + 1` options. TE uses the identical argument.
+The displayed name represents the deterministic ADP-quality floor; the UI does
+not spell out the assumption or append explanatory copy. TE uses the identical
+argument.
 
 Do not use `search_rank` or the unranked tail for this line. If the canonical pool
 is too short to establish the floor, omit the guarantee instead of mixing ranking
@@ -350,9 +351,9 @@ In Dart Throw mode:
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
 - the configured rationale is added to each card;
-- Cost-of-waiting rails, QB/TE demand and guaranteed-floor lines, and the
-  horizontal ADP marker are suppressed because their geometry/context assumes
-  the Normal recommendation horizon, which Dart mode intentionally discards;
+- Cost-of-waiting rails, the QB/TE guaranteed-floor line, and the horizontal ADP
+  marker are suppressed because their geometry/context assumes the Normal
+  recommendation horizon, which Dart mode intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
   vanishing.
 
@@ -441,19 +442,20 @@ private home-server Test container has already pulled and been exercised.
   because they now appear in the Dart view.
 - **Team defense identity is the team abbreviation.** Do not rely on Sleeper's
   human-readable defense name matching `Chargers D` or `Jaguars D` exactly.
-- **QB/TE risk counts unique possible buyers, not picks or probability.** A turn
+- **QB/TE demand counts unique possible buyers, not picks or probability.** A turn
   drafter with two intervening picks counts once, and existing position ownership
-  is the only exclusion rule.
-- **`GUARANTEED <pos> · player or better` guarantees quality, not the named
-  player.** With X needy opponents, use the `(X + 1)`th available canonical-ADP
-  option; never convert this to an exact-player survival claim.
+  is the only exclusion rule. Keep that count available to the calculation even
+  though it is not rendered on the card.
+- **`GUARANTEED <pos>: player` is deliberately terse.** With X needy opponents,
+  use the `(X + 1)`th available canonical-ADP option as the internal quality
+  floor; do not append explanatory or exact-survival wording to the card.
 - **Two consecutive user picks are one recommendation turn.** When currently on
   the first pick, project Cost of waiting and demand from the second pick instead
   of pretending another drafter can act between them.
 - **Ordinal ADP movement is not player-value loss.** Do not derive fake cardinal
   value or scarcity percentages from Cost of waiting.
-- **Uncalibrated urgency thresholds are worse than raw evidence.** Show the
-  evidence until validation supports categories.
+- **Uncalibrated urgency thresholds are worse than raw evidence.** Keep the raw
+  evidence in the model until validation supports categories.
 - **Roster counts are not roster strength.** Current strength uses Consensus ADP,
   league-relative targets, FLEX allocation, and diminishing bench-depth credit.
 - **Browser-local recommendation settings create environment drift.** Stars,
