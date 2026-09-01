@@ -24,6 +24,8 @@ GENERAL_HEADER = ["id", "preference_name", "preference_value"]
 DART_THROW_HEADER = ["order", "Position", "Player", "Team", "reason"]
 DART_THROW_STRENGTH_THRESHOLD = 1.0
 TRACKED_POSITIONS = adp.TRACKED_POSITIONS
+DART_THROW_ONLY_POSITIONS = ("K", "DEF")
+DART_THROW_POSITIONS = (*TRACKED_POSITIONS, *DART_THROW_ONLY_POSITIONS)
 
 _PUNCTUATION = re.compile(r"[^a-z0-9 ]")
 _SUFFIXES = re.compile(r"\b(jr|sr|ii|iii|iv|v)\.?$")
@@ -110,10 +112,12 @@ def load_dart_throws(path: Path | None = None) -> list[dict[str, Any]]:
             reason = (row.get("reason") or "").strip()
             if order <= 0 or order in seen_orders:
                 raise ValueError(f"Invalid or duplicate dart throw order: {order}")
-            if position not in TRACKED_POSITIONS:
+            if position not in DART_THROW_POSITIONS:
                 raise ValueError(f"Unsupported dart throw position: {position!r}")
             if not player or not reason:
                 raise ValueError("Dart throw player and reason are required")
+            if position == "DEF" and not team:
+                raise ValueError("Defense dart throws require a team abbreviation")
             seen_orders.add(order)
             records.append(
                 {
@@ -128,29 +132,81 @@ def load_dart_throws(path: Path | None = None) -> list[dict[str, Any]]:
     return records
 
 
+def build_dart_throw_special_pool(
+    players: dict[str, dict[str, Any]], taken_ids: set[str]
+) -> list[dict[str, Any]]:
+    """Build available K/DEF rows used only by Dart Throw mode."""
+    pool: list[dict[str, Any]] = []
+    for player_id, player in players.items():
+        position = player.get("position")
+        if position not in DART_THROW_ONLY_POSITIONS or player_id in taken_ids:
+            continue
+        if not player.get("active"):
+            continue
+        team = player.get("team") or (player_id if position == "DEF" else None)
+        name = (
+            player.get("full_name")
+            or f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+        )
+        if not name and position == "DEF":
+            name = f"{team or player_id} D"
+        pool.append(
+            {
+                "rank": None,
+                "player_id": player_id,
+                "name": name,
+                "position": position,
+                "team": team,
+                "age": player.get("age"),
+                "bye_week": None,
+                "rank_source": "dart_only",
+                "rank_value": None,
+                "criteria": 0,
+                "adp": None,
+                "consensus_adp": None,
+                "strength_if_drafted": None,
+                "wait_costs": [],
+                "is_best_now": False,
+                "starred": False,
+                "do_not_draft": False,
+            }
+        )
+    return pool
+
+
 def _apply_dart_throws(
     payload: dict[str, Any], dart_throws: list[dict[str, Any]]
 ) -> tuple[int, list[str]]:
-    ranked = payload.get("ranked") or []
+    candidates = [*(payload.get("ranked") or []), *(payload.get("dart_throw_pool") or [])]
     by_name_position: dict[tuple[str, str], list[dict[str, Any]]] = {}
-    for entry in ranked:
+    defenses_by_team: dict[str, list[dict[str, Any]]] = {}
+    for entry in candidates:
         entry["dart_throw_order"] = None
         entry["dart_throw_note"] = None
         key = (_normalize_name(str(entry.get("name") or "")), str(entry.get("position") or ""))
         by_name_position.setdefault(key, []).append(entry)
+        if entry.get("position") == "DEF" and entry.get("team"):
+            defenses_by_team.setdefault(str(entry["team"]), []).append(entry)
 
     matched = 0
     unmatched: list[str] = []
     for dart in dart_throws:
-        key = (_normalize_name(dart["player"]), dart["position"])
-        candidates = by_name_position.get(key, [])
         selected = None
-        if len(candidates) == 1:
-            selected = candidates[0]
-        elif len(candidates) > 1 and dart.get("team"):
-            team_matches = [entry for entry in candidates if entry.get("team") == dart["team"]]
+        if dart["position"] == "DEF" and dart.get("team"):
+            team_matches = defenses_by_team.get(str(dart["team"]), [])
             if len(team_matches) == 1:
                 selected = team_matches[0]
+        else:
+            key = (_normalize_name(dart["player"]), dart["position"])
+            candidates_for_name = by_name_position.get(key, [])
+            if len(candidates_for_name) == 1:
+                selected = candidates_for_name[0]
+            elif len(candidates_for_name) > 1 and dart.get("team"):
+                team_matches = [
+                    entry for entry in candidates_for_name if entry.get("team") == dart["team"]
+                ]
+                if len(team_matches) == 1:
+                    selected = team_matches[0]
         if selected is None:
             unmatched.append(dart["player"])
             continue
