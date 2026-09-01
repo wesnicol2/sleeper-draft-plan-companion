@@ -1,0 +1,10 @@
+.adp-value-sign {
+  display: inline-block;
+  margin-right: 0.22rem;
+  font-weight: 900;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.adp-value-sign.positive { color: var(--ok); }
+.adp-value-sign.negative { color: var(--bad); }
