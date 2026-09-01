@@ -7,10 +7,10 @@ explainable decision context onto the board without changing the canonical
 player ranking.
 
 The application deliberately keeps ranking, roster requirements, Cost of
-waiting, positional strength, live QB/TE demand, contextual signals, personal
-preferences, and Dart Throw mode as separate facts. That makes the board
-inspectable when one signal looks wrong instead of hiding every opinion inside
-one master score.
+waiting, positional strength, live QB/TE demand and guaranteed floors,
+contextual signals, personal preferences, and Dart Throw mode as separate facts.
+That makes the board inspectable when one signal looks wrong instead of hiding
+every opinion inside one master score.
 
 ## Run it
 
@@ -87,9 +87,9 @@ CI runs those checks on every push. A red check blocks promotion.
 - `/draft-state` — live pick state, projected next user pick, roster, counts,
   and current checkpoint.
 - `/board` — available-player data plus Cost of waiting, positional strength,
-  live QB/TE next-pick demand, repository preferences, and Dart Throw metadata.
-  Normal mode renders the first 100 ordered players from this payload. Accepts
-  `?draft_id=` and `?fresh=1`.
+  live QB/TE next-pick demand and guaranteed-floor context, repository
+  preferences, and Dart Throw metadata. Normal mode renders the first 100 ordered
+  players from this payload. Accepts `?draft_id=` and `?fresh=1`.
 - `/rankings` — debugging view showing why the requested ranking slice is ordered
   as it is.
 
@@ -204,6 +204,20 @@ QB is not counted as QB risk, even though that drafter could choose a backup; th
 same rule applies to TE. The number updates as picks are made and does not change
 rank, ADP loss, strength, or card color.
 
+The same demand count also drives a conservative quality floor. If `X` opponents
+before the next relevant pick still lack QB, the board takes the currently
+available canonical-ADP QBs in ADP order and shows the `(X + 1)`th one as:
+
+`GUARANTEED QB · <player> or better`
+
+This does **not** mean that exact named player is guaranteed to survive. It means
+that even if every QB-needy opponent ahead drafts exactly one QB, at most `X` of
+the current top `X + 1` QBs can disappear, so at least that ADP quality or better
+must remain. TE uses the identical rule. The calculation uses the full backend
+available-player pool, so the floor may be deeper than the visible Normal top
+100, and it uses canonical ADP only; Sleeper `search_rank` is never substituted
+into the guarantee.
+
 ### Back-to-back turn picks
 
 When the user owns two consecutive snake picks at the first or last draft slot,
@@ -214,8 +228,8 @@ would be meaningless.
 
 The actual Sleeper on-the-clock state is preserved for the Draft panel. Only the
 recommendation horizon moves to the second turn pick; Cost of waiting, the
-next-pick marker, and QB/TE demand then project to the user's next opportunity
-after the pair.
+next-pick marker, QB/TE demand, and the guaranteed QB/TE floor then project to the
+user's next opportunity after the pair.
 
 The horizontal next-pick marker is anchored to canonical ADP rows. If the
 projected boundary falls outside the first 100 displayed players, the marker is
@@ -270,9 +284,9 @@ Normal mode shows only the next 100 ordered QB/RB/WR/TE players. Dart Throw mode
 - matches team defenses by team abbreviation so display-name wording does not
   determine identity;
 - reports configured names that could not be matched so a stale list is visible;
-- suppresses Cost-of-waiting rails, QB/TE live-demand lines, and the ADP next-pick
-  marker while the static Dart Throw order is displayed, because those overlays
-  only make sense on the Normal recommendation horizon.
+- suppresses Cost-of-waiting rails, QB/TE live-demand and guaranteed-floor lines,
+  and the ADP next-pick marker while the static Dart Throw order is displayed,
+  because those overlays only make sense on the Normal recommendation horizon.
 
 The rationale text is deliberately personal scouting context, not an assertion
 that the underlying news/injury premise has been independently verified by the
