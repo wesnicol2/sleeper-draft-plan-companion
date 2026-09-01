@@ -80,25 +80,21 @@ def load_player_preferences(
 
 
 def _validate_player_preferences(records: dict[int, dict[str, Any]]) -> None:
-    """Ensure preference identities still exist after a rankings-file refresh."""
-    canonical = {
-        _preference_key(record["position"], record["player_name"])
-        for record in adp.load_adp()
-    }
+    """Ensure preference identities are well-formed and unique across ranking refreshes."""
     seen: set[tuple[str, str]] = set()
     for record_id, preference in records.items():
-        key = _preference_key(preference["position"], preference["player"])
+        position = preference["position"]
+        player = preference["player"]
+        if position not in TRACKED_POSITIONS:
+            raise ValueError(
+                f"Player preference id {record_id} has unsupported position: {position!r}"
+            )
+        if not player:
+            raise ValueError(f"Player preference id {record_id} is missing a player name")
+        key = _preference_key(position, player)
         if key in seen:
-            raise ValueError(
-                f"Duplicate player preference identity: {preference['position']} {preference['player']}"
-            )
+            raise ValueError(f"Duplicate player preference identity: {position} {player}")
         seen.add(key)
-        if key not in canonical:
-            raise ValueError(
-                "Player preference id "
-                f"{record_id} is not present in the current ADP source: "
-                f"{preference['position']} {preference['player']}"
-            )
 
 
 def load_dart_throws(path: Path | None = None) -> list[dict[str, Any]]:
