@@ -185,7 +185,9 @@ def _position_demand_before_next(state, all_picks, players, next_pick_no):
 
     context = {}
     for position in DEMAND_POSITIONS:
-        slots_without = [pick_slot for pick_slot in opponent_slots if pick_slot not in owners[position]]
+        slots_without = [
+            pick_slot for pick_slot in opponent_slots if pick_slot not in owners[position]
+        ]
         context[position] = {
             "position": position,
             "next_pick_no": next_pick_no,
