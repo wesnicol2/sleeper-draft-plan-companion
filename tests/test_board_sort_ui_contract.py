@@ -38,4 +38,5 @@ def test_missing_average_rows_sort_after_rows_with_average():
 
     assert "aHasAverage !== bHasAverage" in js
     assert "aHasAverage ? -1 : 1" in js
-    assert "Number(a.rank" in js
+    assert "fallback === 'dart' ? player.dart_throw_order : player.rank" in js
+    assert "Number.MAX_SAFE_INTEGER" in js
