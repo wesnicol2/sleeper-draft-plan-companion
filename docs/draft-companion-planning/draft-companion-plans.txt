@@ -25,7 +25,7 @@ REPOSITORY-BACKED PERSONAL PREFERENCES
 - resources/player-preferences.csv owns Starred and Do Not Draft.
 - resources/general-preferences.csv owns positional-strength alpha/beta values.
 - resources/dart-throws.csv owns the ordered late-draft Dart Throw list and the
-  user's rationale for each candidate.
+  user's rationale for each candidate, including Dart-only kicker/defense picks.
 - These settings are intentionally not editable in the live UI. Repository state
   is the source of truth so browsers, Test, Production, and recreated containers
   remain consistent for a deployed commit.
@@ -41,23 +41,29 @@ CONTEXTUAL PLAYER SIGNALS
   - RB + QB/WR/TE = neutral and does not count toward card color/team load.
 - Signals are presentation-only. They should remain visible/explainable and not
   silently rewrite canonical rank.
+- Dart-only K/DEF cards do not inherit the offensive contextual-signal model.
 
 DART THROW MODE
 - Unlock only after QB, RB, WR, and TE positional strength are each >= 1.00.
+- Kicker and defense do not participate in that strength gate.
 - Then expose a Normal / DART THROW view toggle.
-- Normal mode shows only the next 100 ordered players.
-- Dart Throw mode shows only currently available players from
-  resources/dart-throws.csv, in the exact static order defined there, even if a
-  configured player falls outside the Normal-mode top 100.
-- Each dart card remains the same underlying card with its normal strength,
-  contextual color/signals, Starred and Do Not Draft treatment, plus the
-  repository rationale explaining the upside thesis.
-- Dart candidates do not need canonical ADP coverage; name+position matching to
-  the Sleeper player pool is sufficient.
+- Normal mode shows only the next 100 ordered QB/RB/WR/TE players.
+- Dart Throw mode shows only currently available candidates from
+  resources/dart-throws.csv, in the exact static order defined there, even if an
+  offensive candidate falls outside the Normal-mode top 100.
+- K and DEF are supported only in Dart Throw mode. They come from a separate
+  active, undrafted Sleeper pool and add K/DEF columns only while needed.
+- Offensive dart cards retain their normal strength, contextual color/signals,
+  Starred and Do Not Draft treatment, plus repository rationale.
+- K/DEF dart cards intentionally have no positional-strength, Cost-of-waiting,
+  Starred/DND, or contextual-signal calculation; they show identity and rationale.
+- QB/RB/WR/TE/K matching uses normalized name+position. DEF matching uses exact
+  team abbreviation so Sleeper display-name wording cannot break the configured
+  defense choice.
 - ADP fallback rails / next-pick geometry are hidden while the board is in a
   deliberately non-ADP Dart Throw order.
-- The rationale is personal scouting context, not verified news or a numeric
-  recommendation input.
+- The rationale is personal scouting/prioritization context, not verified news or
+  a numeric recommendation input.
 
 NEXT MODELING WORK
 - Validate Cost of waiting and positional-strength behavior with real/historical
@@ -76,14 +82,18 @@ VALIDATION PRIORITIES
 - Real Sleeper mock drafts across early RB-heavy, WR-heavy, late-RB, early QB/TE,
   and delayed QB/TE builds.
 - Confirm Normal mode consistently shows only the first 100 ordered available
-  players while Dart Throw mode can still surface configured candidates deeper
-  than that display horizon.
+  QB/RB/WR/TE players while Dart Throw mode can still surface deeper configured
+  offensive candidates.
+- Confirm the configured kicker order is Aubrey, Fairbairn, Dicker, Myers, then
+  Chargers D and Jaguars D, and drafted special-team entries disappear.
+- Confirm K/DEF columns appear only in Dart Throw mode and special-team cards do
+  not inherit offensive strength/context treatment.
 - Confirm same-position team overlap is visibly stronger than eligible
   cross-position overlap and all RB + QB/WR/TE same-team pairs are neutral.
 - Confirm repository Starred/Do Not Draft/model settings are identical in Test
   and Production after promotion and cannot be changed from the UI.
-- Confirm Dart Throw toggle appears exactly when the fourth tracked position
-  reaches 1.00, preserves exact CSV order, and shows rationale for deep players.
+- Confirm Dart Throw toggle appears exactly when the fourth core tracked position
+  reaches 1.00 and preserves exact CSV order across all configured positions.
 
 STRETCH GOALS
 - Season-long player projections from odds data.

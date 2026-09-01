@@ -35,9 +35,10 @@ def test_repository_preference_files_are_valid():
         assert isinstance(record["do_not_draft"], bool)
     for key in ("alpha", "beta_QB", "beta_RB", "beta_WR", "beta_TE"):
         assert key in general
-    assert len(dart_throws) == 15
-    assert [record["order"] for record in dart_throws] == list(range(1, 16))
+    assert len(dart_throws) == 21
+    assert [record["order"] for record in dart_throws] == list(range(1, 22))
     assert all(record["reason"] for record in dart_throws)
+    assert {record["position"] for record in dart_throws[-6:]} == {"K", "DEF"}
 
 
 def test_player_flags_parse_safely(tmp_path: Path):

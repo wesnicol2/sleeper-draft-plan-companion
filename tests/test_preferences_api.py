@@ -10,6 +10,7 @@ def test_board_uses_repository_strength_preferences_not_query_overrides(monkeypa
         "beta_TE": 1.0,
     }
     seen = {}
+    pool_seen = {}
 
     monkeypatch.setattr(
         api.config,
@@ -28,6 +29,26 @@ def test_board_uses_repository_strength_preferences_not_query_overrides(monkeypa
         return {"ranked": []}
 
     monkeypatch.setattr(api.board_module, "build_board", fake_build_board)
+    monkeypatch.setattr(
+        api.sleeper,
+        "load_players",
+        lambda: ({"kicker": {"position": "K", "active": True}}, 123.0),
+    )
+    monkeypatch.setattr(
+        api.draft,
+        "get_picks",
+        lambda draft_id, fresh=False: [{"player_id": "taken"}],
+    )
+
+    def fake_special_pool(players, taken_ids):
+        pool_seen.update(players=players, taken_ids=taken_ids)
+        return [{"player_id": "kicker", "position": "K"}]
+
+    monkeypatch.setattr(
+        api.preferences,
+        "build_dart_throw_special_pool",
+        fake_special_pool,
+    )
     monkeypatch.setattr(
         api.preferences,
         "apply_player_preferences",
@@ -49,5 +70,10 @@ def test_board_uses_repository_strength_preferences_not_query_overrides(monkeypa
         "fresh": True,
         "strength_parameters": configured,
     }
+    assert pool_seen == {
+        "players": {"kicker": {"position": "K", "active": True}},
+        "taken_ids": {"taken"},
+    }
+    assert payload["dart_throw_pool"] == [{"player_id": "kicker", "position": "K"}]
     assert payload["preferences_applied"] is True
     assert payload["configured"] is True
