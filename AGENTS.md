@@ -52,18 +52,22 @@ The service is intentionally small:
 - `strength.py` owns the average-ADP positional-strength model.
 - `preferences.py` loads repository-backed player, strength-model, and Dart Throw
   configuration and builds the Dart-only kicker/team-defense pool.
-- `ui/` is plain HTML/CSS/JavaScript with no frontend build step.
+- `ui/` is plain HTML/CSS/JavaScript with no frontend build step. `board-sort.js`
+  owns the instantaneous Normal Sleeper/AVG view switch and turns the existing
+  Dart strength threshold into a presentation-only readiness signal.
 
-The backend owns ranking and recommendation data. JavaScript may change how a
-server-produced fact is displayed, but it must not invent a competing canonical
-ranking or silently mutate repository-owned preferences. The QB/TE guaranteed
-floor is a deterministic presentation derived from two backend facts already in
-the payload: the live needy-drafter count and the full canonical-ADP available
-pool.
+The backend owns canonical ranking and recommendation data. JavaScript may change
+how a server-produced fact is displayed, including reordering a cloned Normal
+view by AVG, but it must not mutate `payload.ranked`, invent a competing backend
+canonical ranking, or silently mutate repository-owned preferences. The QB/TE
+guaranteed floor is a deterministic presentation derived from two backend facts
+already in the payload: the live needy-drafter count and the full canonical-ADP
+available pool.
 
-The Normal-card ADP value sign is also deliberately presentation-only. The
-backend supplies both canonical Sleeper ADP and market-average `AVG`; the UI
-compares those two values without changing the ordered player pool.
+The Normal-card ADP value gap is also deliberately presentation-only. The backend
+supplies both canonical Sleeper ADP and market-average `AVG`; the UI compares
+those two values and may use AVG for the selected Normal display order without
+changing Sleeper-based recommendation math.
 
 ## Repository-backed personal configuration
 
@@ -130,15 +134,17 @@ strategy choices.
 
 Kicker and defense remain outside the Normal board, checkpoint plan, Cost of
 waiting, and positional-strength models. They may appear only as explicitly
-configured Dart Throw candidates after the core QB/RB/WR/TE strength gate is met.
+configured Dart Throw candidates, but Dart Throw itself can now be opened at any
+time; the core QB/RB/WR/TE strength threshold is readiness emphasis, not access
+control.
 
 ## Available-pool ordering and the 100-player Normal horizon
 
-The backend retains the ordered available QB/RB/WR/TE pool, but Normal draft mode
-shows only the first 100 available players. The 100-player horizon is a display
+The backend retains the canonical Sleeper-ordered available QB/RB/WR/TE pool, but
+Normal draft mode shows only 100 players. The 100-player horizon is a display
 choice, not a new ranking rule.
 
-Ordering remains explicit and deterministic:
+Canonical backend ordering remains explicit and deterministic:
 
 1. matched rows with a usable `Sleeper` value in
    `resources/std_overall_3d_09012026.csv`, ordered by that Sleeper ADP;
@@ -147,42 +153,48 @@ Ordering remains explicit and deterministic:
 3. remaining active tracked players, ordered by normalized display name then
    player ID as an unranked tail.
 
-`AVG`, `Expert`, ESPN, Yahoo, Underdog, CBS, and FFPC never control that ordering.
-They are separate evidence. `AVG` currently feeds positional-strength valuation
-and the Normal-card `+`/`-` indicator; the other provider columns are retained
-for future use.
+The Normal UI may instantly sort a cloned copy of that full pool by `AVG`. AVG
+rows sort first by market-average ADP; missing AVG rows follow in canonical
+Sleeper order. `ui/board-sort.js` must run before `ui/board-limit.js` so Average
+mode chooses its top 100 from the full available pool rather than merely
+reordering Sleeper's already-sliced 100. `Expert`, ESPN, Yahoo, Underdog, CBS,
+and FFPC remain retained evidence and do not control either supported view.
 
 The broader backend pool is intentional even though Normal mode stops at 100.
 Dart Throw mode may need to surface a repository-configured deep player outside
 that horizon, and the QB/TE guaranteed floor may also land below the visible
 window. Capping `payload.ranked` itself would therefore make both behaviors
 depend on normal-board visibility. `rank_source` and `rank_value` keep the full
-ordering inspectable while `ui/board-limit.js` owns the Normal-mode slice.
+canonical ordering inspectable while `ui/board-limit.js` owns the Normal-mode
+slice after the selected view sort.
 
-The separate Dart-only K/DEF pool does not participate in this ordering at all.
+The separate Dart-only K/DEF pool does not participate in either Normal ordering.
 Those positions have no canonical place in Normal mode and are joined only after
 Dart Throw mode is active.
 
 Cost-of-waiting fallbacks may also land outside the visible 100. In that case the
-fallback summary says it is not currently shown, and the next-pick marker is
-placed after the visible range with a `beyond shown 100` label. A true canonical
-ADP exhaustion remains a separate `beyond canonical ADP range` condition.
+fallback summary says it is not currently shown. The numeric `ADP +N` remains
+Sleeper-based in either sort, while the displayed up/down row distance follows
+the active Normal view. The horizontal next-pick marker is canonical-Sleeper
+geometry and is therefore suppressed in Average mode instead of being drawn on a
+misleading row.
 
 ## Static ADP, market-average value, and Cost of waiting
 
 There are now two different ADP concepts in the rankings snapshot and they must
 not be conflated:
 
-- `Sleeper` is the canonical static overall rank for board order, Cost of waiting,
-  next-pick geometry, and the QB/TE guaranteed floor.
-- `AVG` is the market-average valuation input used by positional strength and the
-  Normal-card valuation sign.
+- `Sleeper` is the canonical static overall rank for backend board order, Cost of
+  waiting, next-pick geometry, and the QB/TE guaranteed floor.
+- `AVG` is the market-average valuation input used by positional strength, the
+  Normal-card valuation gap, and the optional Average Normal-board view.
 
 Sleeper's public player payload `search_rank` is still only an explicitly labeled
 fallback when the static snapshot has no usable Sleeper rank.
 
-Cost of waiting deliberately does **not** use either market AVG or the fallback.
-Its numeric comparison is defined in terms of canonical static Sleeper ADP:
+Cost of waiting deliberately does **not** use either market AVG or the fallback
+for its numeric deterioration. Its comparison is defined in terms of canonical
+static Sleeper ADP:
 
 `likely available at projected pick = static ADP rank >= projected user pick`
 
@@ -190,26 +202,30 @@ and:
 
 `ADP loss if waiting = fallback ADP rank - candidate ADP rank`
 
-This is ordinal rank deterioration, not fantasy-value loss. Missing canonical
-ADP produces unavailable Cost of waiting instead of mixing scales.
+This is ordinal Sleeper-rank deterioration, not fantasy-value loss. Missing
+canonical ADP produces unavailable Cost of waiting instead of mixing scales.
+Only the on-screen row-distance annotation follows whichever Normal sort is
+currently displayed.
 
 The backend may retain two projected picks for future use; the board presents
 the next opportunity to minimize draft-time noise.
 
-### Normal-card average-ADP sign
+### Normal-card average-ADP gap
 
 `ui/board-adp-value.js` compares `consensus_adp` (the snapshot's `AVG`) to `adp`
 (the snapshot's canonical `Sleeper` rank) after the Normal board has rendered:
 
-- `AVG < Sleeper` → `+`: the broader market ranks the player earlier, so the
-  player is undervalued in Sleeper.
-- `AVG > Sleeper` → `-`.
-- equal/missing/non-numeric comparison → no sign.
+- `AVG < Sleeper` → `+N`: the broader market ranks the player `N` spots earlier,
+  so the player is undervalued in Sleeper.
+- `AVG > Sleeper` → `-N`.
+- equal/missing/non-numeric comparison → no badge.
 
-The sign is explanatory metadata only. It must not alter `payload.ranked`, column
-ordering, Cost of waiting, checkpoint need, or strength. It is hidden in Dart
-Throw mode because the Dart view intentionally replaces normal ADP order with a
-repository-owned static order.
+The magnitude is the absolute Sleeper-vs-AVG gap and is rendered to one decimal
+place only when needed. The badge is explanatory metadata only. It must not alter
+canonical `payload.ranked`, Cost of waiting, checkpoint need, or strength. It is
+valid in either Normal display sort and hidden in Dart Throw mode because the
+Dart view intentionally replaces normal ADP order with a repository-owned static
+order.
 
 ### Live QB/TE demand is evidence, not probability
 
@@ -255,7 +271,8 @@ argument.
 Do not use `search_rank` or the unranked tail for this line. If the canonical pool
 is too short to establish the floor, omit the guarantee instead of mixing ranking
 scales. The calculation deliberately consults the unsliced backend payload even
-when Normal mode renders only 100 rows.
+when Normal mode renders only 100 rows or is currently displayed in Average
+order.
 
 ### Back-to-back turn picks use the second pick as recommendation anchor
 
@@ -271,7 +288,9 @@ first selection. Cost of waiting, the next-pick marker, picks-until-next, QB/TE
 demand, and the guaranteed floor all use the turn-aware recommendation horizon.
 
 When the user is already on the second pick, or is not at a turn slot, the actual
-on-the-clock pick remains the recommendation anchor.
+on-the-clock pick remains the recommendation anchor. The horizontal next-pick
+marker is shown only in Sleeper Normal sort because its row geometry is defined by
+canonical Sleeper ADP.
 
 ## Positional strength
 
@@ -362,17 +381,19 @@ relationships and should not be silently extended to special teams.
 
 ## Dart Throw mode
 
-Dart Throw mode is a late-draft view, not another ranking model. Eligibility is
-server-derived from the existing positional-strength output:
+Dart Throw mode is a fixed-order alternative view, not another ranking model. It
+is **always available**. The backend still derives the existing readiness fact:
 
-`eligible = QB >= 1.00 and RB >= 1.00 and WR >= 1.00 and TE >= 1.00`
+`ready = QB >= 1.00 and RB >= 1.00 and WR >= 1.00 and TE >= 1.00`
 
 The threshold is intentionally simple and explicit. Kicker and defense do not
-participate in the gate, and Dart status does not change any strength calculation.
+participate. Readiness does not change any strength calculation and no longer
+gates the view: it only makes the Dart Throw button bold once the late-draft
+roster condition has been reached.
 
-Once eligible, the UI exposes a Normal / Dart Throw toggle. The toggle is local
-view state only; it does not edit repository preferences. If a later board poll
-makes any core position fall below the threshold, Dart mode exits automatically.
+The toggle is local view state only; it does not edit repository preferences.
+The user may enter or leave Dart Throw at any time, and later board polls do not
+force an exit merely because a core position is below `1.00`.
 
 In Dart Throw mode:
 
@@ -382,14 +403,14 @@ In Dart Throw mode:
   `dart_throw_pool`;
 - K and DEF columns are added only when at least one matching candidate at that
   position is currently available;
-- CSV `order` replaces normal board order across offensive and special-team
-  candidates together;
+- CSV `order` replaces both Normal Sleeper and Average view order across offensive
+  and special-team candidates together;
 - ordinary card enrichments continue where the underlying model exists; K/DEF
   intentionally have no strength, Cost-of-waiting, star/DND preference, or
   contextual-signal calculation;
 - the configured rationale is added to each card;
 - Cost-of-waiting rails, the QB/TE guaranteed-floor line, the Normal ADP value
-  sign, and the horizontal ADP marker are suppressed because their
+  gap, and the horizontal ADP marker are suppressed because their
   geometry/context assumes the Normal recommendation horizon, which Dart mode
   intentionally discards;
 - unmatched configured names are surfaced in the board note instead of silently
@@ -401,46 +422,54 @@ adds the temporary K/DEF columns, and cleans offensive-only signal decoration of
 special-team cards. It must never alter the Normal-mode player list.
 
 The user can toggle back to Normal without mutating any server or repository
-state. See [`docs/dart-throw-mode.md`](docs/dart-throw-mode.md).
+state. See [`docs/dart-throw-mode.md`](docs/dart-throw-mode.md). That human-owned
+spec may lag this UI-access change until explicitly approved for editing; code,
+README, and this architecture note are authoritative for the current behavior.
 
 ## Frontend decisions
 
 ### Explicit grid placement
 
 Board cells carry explicit grid row/column placement because band labels and row
-spans can otherwise shift unrelated columns. The normal ranked band uses the
-server-provided order and takes only the first 100 rows; the frontend does not
-re-rank those rows.
+spans can otherwise shift unrelated columns. The backend ranked band is canonical
+Sleeper order. `board-sort.js` may create a cloned Average-ordered Normal view,
+and `board-limit.js` then takes the first 100 rows from whichever Normal view is
+selected. Neither step mutates the server payload.
 
 ### Wrapper modules preserve one render pipeline
 
-Several UI files wrap the global `renderBoard` function to add Cost of waiting,
-strength, contextual signals, Do Not Draft, stars, average-ADP value signs, Dart
-rationale, and Dart-only special teams. Wrapper order matters. Any mode that
-filters the board must create the final board view before `renderBoard` is called
-so every enhancer sees the same player list and cell index mapping.
-`board-limit.js` wraps `boardForCurrentMode` immediately after `script.js`; the
-later `board-dart-special-teams.js` wrapper leaves Normal mode untouched and
-replaces only the active Dart view with the combined configured pool.
+Several UI files wrap the global `renderBoard` or `boardForCurrentMode` functions
+to add Normal sorting, display limiting, Cost of waiting, strength, contextual
+signals, Do Not Draft, stars, average-ADP value gaps, Dart rationale, and Dart-only
+special teams. Wrapper order matters. Any mode that filters or reorders the board
+must create the final board view before `renderBoard` is called so every enhancer
+sees the same player list and cell index mapping.
+
+`board-sort.js` wraps `boardForCurrentMode` immediately after `script.js`; it must
+stay before `board-limit.js` so AVG sorting sees the full backend pool. The later
+`board-dart-special-teams.js` wrapper leaves Normal mode untouched and replaces
+only the active Dart view with the combined configured pool.
 
 `board-cost.js` is one deliberate exception to using only the sliced render view:
 its guaranteed QB/TE quality floor consults `lastBoardPayload.ranked` so a valid
 canonical floor beyond Normal row 100 is not lost. It may **read** that broader
 pool for the deterministic floor, but it must not use it to re-rank or expand the
-Normal board itself.
+Normal board itself. Its visual fallback distance uses the active rendered row
+indices, while `ADP +N` remains canonical Sleeper deterioration.
 
-`board-adp-value.js` decorates rendered Normal cards only after the underlying
-board is already ordered. Keep this indicator downstream of ranking; a future
-refactor must not accidentally sort on `AVG` because the presence of a `+` or
-`-` is intentionally evidence about a Sleeper-vs-market disagreement, not a new
-canonical ranking.
+`board-adp-value.js` decorates rendered Normal cards after the underlying Normal
+view is selected. The signed gap is evidence about Sleeper-vs-market disagreement.
+Average view is allowed to order by AVG, but neither that view nor the badge may
+rewrite canonical rank fields or feed AVG into Sleeper-defined Cost-of-waiting or
+guaranteed-floor math.
 
 ### Draft-time controls are deliberately scarce
 
 Repository-owned preferences have no controls. Draft selection and Refresh are
-setup/escape-hatch interactions. Dart Throw is the one deliberate draft-time
-view toggle because it changes only which already-configured candidates are
-shown after the roster has reached the explicit late-draft strength gate.
+setup/escape-hatch interactions. Normal has two explicit local view controls:
+Sleeper/Average changes only display order, and Normal/Dart Throw changes only the
+candidate view. Both re-render the last board payload immediately and neither
+writes repository configuration or waits for a server poll.
 
 ## Draft timing and discovery
 
@@ -464,7 +493,9 @@ not a recommendation preference.
 
 Live draft reads use a one-second in-memory cache and the UI polls every two
 seconds while drafting. Manual Refresh bypasses the live cache. The large Sleeper
-player payload is cached much longer.
+player payload is cached much longer. Sleeper/Average and Normal/Dart Throw are
+local re-renders of `lastBoardPayload` and therefore switch without a network
+round trip.
 
 Feature branches publish `:test`; `main` publishes `:latest`; dev branches run
 CI but deploy nowhere. Repository CSVs are part of the image, so the deployed
@@ -478,10 +509,18 @@ private home-server Test container has already pulled and been exercised.
 ## Repo history worth not relearning
 
 - **The rankings snapshot has two intentional ADP roles.** `Sleeper` controls
-  canonical board order; `AVG` is market valuation. Never sort the board on AVG.
-- **`+` means Sleeper undervaluation.** On a Normal card, `AVG < Sleeper` is `+`,
-  `AVG > Sleeper` is `-`, and equal/missing values show nothing. The sign is not
-  a ranking input and is hidden in Dart Throw mode.
+  canonical backend order and Sleeper-defined decision geometry; `AVG` is market
+  valuation and may optionally control only the cloned Normal display order.
+- **The Normal sort switch must happen before the 100-row limit.** Otherwise AVG
+  would only reshuffle Sleeper's top 100 instead of selecting the true AVG top
+  100 from the full available pool.
+- **`+N` means Sleeper undervaluation by N spots.** On a Normal card,
+  `AVG < Sleeper` is positive, `AVG > Sleeper` is negative, and equal/missing
+  values show nothing. The gap is not a recommendation input and is hidden in
+  Dart Throw mode.
+- **Dart Throw readiness is not access control.** The button is always clickable;
+  the four-position `1.00` condition only makes it bold. Do not reintroduce
+  automatic lockout or forced exit without an explicit product decision.
 - **Sleeper player-payload `search_rank` is not canonical ADP.** It is a visible
   fallback only when the static snapshot has no usable Sleeper rank.
 - **Player preferences follow identity, not rank number.** Rankings refreshes may
