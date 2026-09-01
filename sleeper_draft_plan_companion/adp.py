@@ -9,13 +9,16 @@ but do not affect ordering.
 from __future__ import annotations
 
 import csv
-import lzma
 import re
 from pathlib import Path
 from typing import Any
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
-CSV_PATH = Path(__file__).resolve().parent.parent / "resources" / "adp.csv.xz"
+CSV_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "resources"
+    / "std_overall_3d_09012026.csv"
+)
 EXPECTED_HEADER = [
     "Rank",
     "Player",
@@ -71,7 +74,7 @@ def load_adp() -> list[dict[str, Any]]:
     if _MEMO is not None:
         return _MEMO
 
-    with lzma.open(CSV_PATH, mode="rt", encoding="utf-8-sig", newline="") as handle:
+    with CSV_PATH.open(mode="r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         if reader.fieldnames != EXPECTED_HEADER:
             raise ValueError(f"Unexpected ADP CSV header: {reader.fieldnames!r}")
