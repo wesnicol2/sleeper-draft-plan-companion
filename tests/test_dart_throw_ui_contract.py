@@ -9,6 +9,7 @@ def test_dart_throw_assets_and_toggle_are_loaded():
     assert "/ui/board-dart-throws.css" in index
     assert "/ui/board-dart-throws.js" in index
     assert index.index("/ui/board-dart-throws.js") > index.index("/ui/board-stars.js")
+    assert 'id="dartThrowToggle" type="button" class="dart-toggle"' in index
 
 
 def test_dart_throw_mode_filters_and_sorts_repository_candidates():
@@ -20,11 +21,16 @@ def test_dart_throw_mode_filters_and_sorts_repository_candidates():
     assert "dartThrowMode = false" in js
 
 
-def test_dart_throw_toggle_only_unlocks_after_backend_strength_gate():
-    js = (ROOT / "ui" / "script.js").read_text()
-    assert "board.dart_throw_mode && board.dart_throw_mode.eligible" in js
-    assert "toggle.hidden = !eligible" in js
-    assert "if (!dartThrowEligible(lastBoardPayload)) return" in js
+def test_dart_throw_is_always_clickable_and_strength_gate_only_marks_ready():
+    js = (ROOT / "ui" / "board-sort.js").read_text()
+    css = (ROOT / "ui" / "board-dart-throws.css").read_text()
+
+    assert "const originalDartThrowEligible = dartThrowEligible" in js
+    assert "dartThrowEligible = function () { return true; }" in js
+    assert "const ready = originalDartThrowEligible(board)" in js
+    assert "toggle.classList.toggle('ready', ready)" in js
+    assert ".dart-toggle.ready" in css
+    assert "font-weight: 800" in css
 
 
 def test_dart_throw_cards_show_repository_reason_without_restyling_core_card():
