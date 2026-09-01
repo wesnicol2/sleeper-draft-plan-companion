@@ -7,10 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_repository_special_team_darts_use_requested_order():
     darts = preferences.load_dart_throws()
-    tail = [
-        (record["position"], record["player"], record["team"])
-        for record in darts[-6:]
-    ]
+    tail = [(record["position"], record["player"], record["team"]) for record in darts[-6:]]
 
     assert tail == [
         ("K", "Brandon Aubrey", "DAL"),
