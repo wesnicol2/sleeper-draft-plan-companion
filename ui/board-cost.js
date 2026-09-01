@@ -17,6 +17,15 @@
     return 'NEXT → ' + fallback.name + ' · ' + distanceText + ' · ' + costText(cost);
   }
 
+  function demandSummary(position, demand) {
+    if (!demand || !['QB', 'TE'].includes(position)) return null;
+    const without = Number(demand.drafters_without_position || 0);
+    const total = Number(demand.drafters_before_next || 0);
+    const verb = without === 1 ? 'has' : 'have';
+    return position + ' RISK · ' + without + ' of ' + total +
+      ' drafters before your next pick ' + verb + ' no ' + position;
+  }
+
   function addFallbackRail(grid, anchorCell, fallbackCell) {
     if (!anchorCell || !fallbackCell) return;
     const anchorRow = Number(anchorCell.style.gridRowStart);
@@ -61,25 +70,37 @@
       cell.appendChild(badge);
 
       const cost = (player.wait_costs || [])[0];
-      if (!cost) return;
+      if (cost) {
+        const summary = document.createElement('span');
+        summary.className = 'board-position-path';
+        summary.textContent = fallbackSummary(player, cost, rankById);
+        cell.appendChild(summary);
 
-      const summary = document.createElement('span');
-      summary.className = 'board-position-path';
-      summary.textContent = fallbackSummary(player, cost, rankById);
-      cell.appendChild(summary);
+        if (cost.fallback) {
+          const fallbackId = cost.fallback.player_id;
+          const fallbackRank = rankById.get(fallbackId);
+          const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
+          if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
+          fallbackTargets.get(fallbackId).push({
+            position: player.position,
+            distance: distance,
+          });
 
-      if (!cost.fallback) return;
-      const fallbackId = cost.fallback.player_id;
-      const fallbackRank = rankById.get(fallbackId);
-      const distance = fallbackRank == null ? null : Math.max(0, fallbackRank - player.rank);
-      if (!fallbackTargets.has(fallbackId)) fallbackTargets.set(fallbackId, []);
-      fallbackTargets.get(fallbackId).push({
-        position: player.position,
-        distance: distance,
-      });
+          if (!isDartThrow && fallbackRank != null && distance > 0) {
+            addFallbackRail(grid, cell, cellById.get(fallbackId));
+          }
+        }
+      }
 
-      if (!isDartThrow && fallbackRank != null && distance > 0) {
-        addFallbackRail(grid, cell, cellById.get(fallbackId));
+      if (!isDartThrow) {
+        const demand = (board.position_demand_before_next || {})[player.position];
+        const demandText = demandSummary(player.position, demand);
+        if (demandText) {
+          const demandEl = document.createElement('span');
+          demandEl.className = 'board-position-demand';
+          demandEl.textContent = demandText;
+          cell.appendChild(demandEl);
+        }
       }
     });
 
