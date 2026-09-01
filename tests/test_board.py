@@ -28,7 +28,7 @@ def test_load_adp_repairs_split_player_names():
     assert "Cam Skattebo" in names
     assert "Bhayshul Tuten" in names
     assert "Kyle Monangai" in names
-    assert "Harold Fannin Jr." in names
+    assert "Harold Fannin" in names
 
 
 def test_load_adp_does_not_use_consensus_as_rank():
