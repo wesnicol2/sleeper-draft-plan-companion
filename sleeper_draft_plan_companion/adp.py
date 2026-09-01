@@ -15,9 +15,7 @@ from typing import Any
 
 TRACKED_POSITIONS = ("QB", "RB", "WR", "TE")
 CSV_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "resources"
-    / "std_overall_3d_09012026.csv"
+    Path(__file__).resolve().parent.parent / "resources" / "std_overall_3d_09012026.csv"
 )
 EXPECTED_HEADER = [
     "Rank",
