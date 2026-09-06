@@ -1,10 +1,10 @@
-name: Tests
+name: Verify
 
 on:
   workflow_call:
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -15,12 +15,14 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
 
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
           pip install -e ".[dev]"
 
-      - name: Run tests
-        run: python -m pytest tests/ -q
+      - name: Verify
+        run: ./scripts/verify

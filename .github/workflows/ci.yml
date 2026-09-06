@@ -24,7 +24,7 @@ jobs:
   #   feature/** -> :test    (Test)
   #   main       -> :latest  (Production)
   # dev/** derives no tag on purpose: the publish job is gated on a non-empty
-  # tag, so dev branches get lint and test but deploy nowhere.
+  # tag, so dev branches get verification but deploy nowhere.
   tag:
     runs-on: ubuntu-latest
     outputs:
@@ -43,14 +43,11 @@ jobs:
           echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=$REF -> tag=${tag:-<none>}"
 
-  lint:
-    uses: ./.github/workflows/lint.yml
-
-  test:
-    uses: ./.github/workflows/test.yml
+  verify:
+    uses: ./.github/workflows/verify.yml
 
   publish:
-    needs: [tag, lint, test]
+    needs: [tag, verify]
     # A pull request proves the code is good; the merge is what deploys.
     if: github.event_name == 'push' && needs.tag.outputs.image_tag != ''
     uses: ./.github/workflows/publish.yml
