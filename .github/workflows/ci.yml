@@ -24,7 +24,7 @@ jobs:
   #   feature/** -> :test    (Test)
   #   main       -> :latest  (Production)
   # dev/** derives no tag on purpose: the publish job is gated on a non-empty
-  # tag, so dev branches get lint and test but deploy nowhere.
+  # tag, so dev branches get verification but deploy nowhere.
   tag:
     runs-on: ubuntu-latest
     outputs:
@@ -43,14 +43,38 @@ jobs:
           echo "image_tag=$tag" >> "$GITHUB_OUTPUT"
           echo "ref=$REF -> tag=${tag:-<none>}"
 
-  lint:
-    uses: ./.github/workflows/lint.yml
+  verify:
+    uses: ./.github/workflows/verify.yml
 
-  test:
-    uses: ./.github/workflows/test.yml
+  # main's existing branch protection still requires the historical check
+  # context names. Keep those contexts as mirrors of the single deterministic
+  # verification gate so protection remains effective without running Ruff or
+  # pytest twice. These can be removed if branch protection is later updated to
+  # require `verify / verify` directly.
+  lint-compat:
+    name: lint / lint
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror verification result
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = "success"
+
+  test-compat:
+    name: test / test
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror verification result
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = "success"
 
   publish:
-    needs: [tag, lint, test]
+    needs: [tag, verify]
     # A pull request proves the code is good; the merge is what deploys.
     if: github.event_name == 'push' && needs.tag.outputs.image_tag != ''
     uses: ./.github/workflows/publish.yml

@@ -70,13 +70,28 @@ python -m sleeper_draft_plan_companion.api --host 0.0.0.0 --port 8000
 
 ## Test it
 
+Install development dependencies once:
+
 ```bash
 pip install -e ".[dev]"
-ruff check && ruff format --check
-python -m pytest tests/
 ```
 
-CI runs those checks on every push. A red check blocks promotion.
+After modifying Python, let the repo-owned pinned tooling normalize it rather
+than manually guessing Ruff formatting:
+
+```bash
+./scripts/fix
+```
+
+Before every push, run the same Python verification gate CI runs:
+
+```bash
+./scripts/verify
+```
+
+CI reruns `./scripts/verify` on every push. A checkout with Python and a shell is
+enough for Ruff, formatting, syntax, and unit-test validation; the deployed Test
+environment is for runtime/integration verification after feature promotion.
 
 ## Endpoints
 
