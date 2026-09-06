@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pip install -q -r requirements.txt && pip install -q -e '.[dev]' && echo 'Ready: ruff check | ruff format --check | python -m pytest tests/'",
+            "command": "pip install -q -r requirements.txt && pip install -q -e '.[dev]' && echo 'Ready. After Python edits: ./scripts/fix. Before every push: ./scripts/verify. CI runs the same verification gate.'",
             "timeout": 180
           }
         ]

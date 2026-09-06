@@ -18,8 +18,8 @@ branch-appropriate tag to GHCR; Watchtower on the server polls each container's
 tag and recreates it on a new digest. Promotion is a merge, never a manual image
 copy.
 
-> **`dev/*` branches deploy nowhere.** They still get full CI — lint and tests
-> run on every push — but they derive no image tag, so nothing is published and
+> **`dev/*` branches deploy nowhere.** They still get full CI — verification
+> runs on every push — but they derive no image tag, so nothing is published and
 > no container moves. Verification against a running app happens on Test, after
 > the `dev/*` → `feature/*` merge.
 
@@ -34,7 +34,7 @@ Strict promotion, always: `dev/*` → `feature/*` → `main`. There is no shortc
 for small changes — a one-line fix takes the same path as a rewrite.
 
 - **`dev/<kebab-case>`** — one logical change, cut from the `feature/` branch it
-  belongs to. All code enters the repo here. Every push runs lint and tests;
+  belongs to. All code enters the repo here. Every push runs verification;
   nothing is published and nothing deploys.
 - **`feature/<kebab-case>`** — an initiative-sized body of work, cut from the tip
   of `main` so its diff against `main` is exactly "what this initiative changed."
@@ -58,10 +58,14 @@ Naming: `feature/kebab-case-name`, `dev/kebab-case-name`. No other prefixes.
 
 1. Cut a `dev/` branch from the relevant `feature/` branch. If there isn't one
    for this work yet, cut the `feature/` branch from `main` first.
-2. Make the change. Run `ruff check`, `ruff format --check`, and
-   `python -m pytest tests/` locally before pushing.
-3. Push. CI runs lint and tests; nothing deploys from a `dev/` branch. A red
-   check here is the signal to fix before going further.
+2. Make the change. After modifying Python, run `./scripts/fix`; do not manually
+   guess Ruff formatting. Before pushing, run `./scripts/verify`. This is the
+   exact verification gate CI runs, covering Ruff linting/formatting, tracked
+   Python syntax, and unit tests. Do not use failed CI as the normal formatting
+   or unit-test feedback loop.
+3. Push. CI reruns `./scripts/verify`; nothing deploys from a `dev/` branch. A
+   red check here is a hard stop and should normally indicate an environment or
+   dependency difference, not a formatting failure first discovered remotely.
 4. Open a PR `dev/*` → its feature branch. Merging publishes `:test` and
    auto-deploys to **Test**. Delete the `dev/` branch as soon as it is merged.
 5. Exercise Test for at least one real session. This is the only place a change
@@ -71,6 +75,11 @@ Naming: `feature/kebab-case-name`, `dev/kebab-case-name`. No other prefixes.
 6. Open a PR `feature/*` → `main` and get a review from the repo owner. Merging
    publishes `:latest` and auto-deploys to **Production**. Delete the `feature/`
    branch as soon as it is merged.
+
+An agent with a checkout, Python runtime, and shell does not need access to the
+deployed Test environment to validate Ruff, formatting, tracked-Python syntax,
+or unit tests. The deployed Test environment is for runtime/integration
+verification after promotion to `feature/*`.
 
 ## Pull request descriptions
 
@@ -102,22 +111,21 @@ the one thing they cannot: what to actually go and look at.
 
 ## CI/CD pipeline
 
-Modular, built from widely-used marketplace actions and composed with
-`workflow_call` reusable workflows. `ci.yml` is the only entrypoint — `on: push`
-for `dev/**`, `feature/**`, `main`, plus `on: pull_request` and a manual
-`workflow_dispatch` — and it derives the image tag from `github.ref`, then calls
-three stages in sequence:
+`ci.yml` is the only entrypoint — `on: push` for `dev/**`, `feature/**`, `main`,
+plus `on: pull_request` and a manual `workflow_dispatch`. It derives the image
+tag from `github.ref`, then calls two reusable stages:
 
-1. **`lint.yml`** — `actions/checkout@v4`, `astral-sh/ruff-action@v3`:
-   `ruff check` and `ruff format --check`, plus a `python -m compileall` syntax
-   check. Ruff is the whole linting story: no ESLint, no mypy.
-2. **`test.yml`** — `actions/checkout@v4`, `actions/setup-python@v5` (with pip
-   cache), then `python -m pytest tests/`.
-3. **`publish.yml`** — `docker/setup-buildx-action@v3`, `docker/login-action@v3`,
+1. **`verify.yml`** — `actions/checkout@v4` and `actions/setup-python@v5`, installs
+   the runtime and development dependencies, then runs `./scripts/verify`.
+   That repository-owned script is the single verification contract for both
+   agents and CI: Ruff linting/formatting, syntax compilation of tracked Python
+   files, and pytest. Ruff is exactly pinned in `pyproject.toml` so a forgotten
+   repo does not silently acquire different formatter behavior.
+2. **`publish.yml`** — `docker/setup-buildx-action@v3`, `docker/login-action@v3`,
    `docker/metadata-action@v5`, `docker/build-push-action@v6`. Pushes to
    `ghcr.io/<owner>/<repo>` under the derived tag (`feature/**` → `:test`,
    `main` → `:latest`; `dev/**` derives no tag and so publishes nothing). Gated
-   on lint and test passing, and skipped for pull requests — the merge is what
+   on verification passing, and skipped for pull requests — the merge is what
    deploys, not the PR.
 
 Registry auth is the built-in `GITHUB_TOKEN`, not a personal access token, so a
