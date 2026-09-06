@@ -46,6 +46,33 @@ jobs:
   verify:
     uses: ./.github/workflows/verify.yml
 
+  # main's existing branch protection still requires the historical check
+  # context names. Keep those contexts as mirrors of the single deterministic
+  # verification gate so protection remains effective without running Ruff or
+  # pytest twice. These can be removed if branch protection is later updated to
+  # require `verify / verify` directly.
+  lint-compat:
+    name: lint / lint
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror verification result
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = "success"
+
+  test-compat:
+    name: test / test
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror verification result
+        env:
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: test "$VERIFY_RESULT" = "success"
+
   publish:
     needs: [tag, verify]
     # A pull request proves the code is good; the merge is what deploys.
